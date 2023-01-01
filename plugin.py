@@ -3,10 +3,10 @@
 # 
 #
 """
-<plugin key="RootedToonPlug" name="Toon Rooted" author="MadPatrick" version="1.1.0" externallink="https://www.domoticz.com/forum/viewtopic.php?f=34&t=34986">
+<plugin key="RootedToonPlug" name="Toon Rooted" author="MadPatrick" version="1.2.0" externallink="https://www.domoticz.com/forum/viewtopic.php?f=34&t=34986">
     <description>
 	<br/><h2>Domoticz Toon Rooted plugin</h2><br/>
-        version: 1.1.0
+        version: 1.2.0
         <br/>The configuration contains the following sections:
         <ul style="list-style-type:square">
             <li>Interfacing between Domoticz and a rooted Toon</li>
@@ -69,6 +69,19 @@ programs = ['40','30','20','10','50']
 rPrograms = ['3','2','1','0','4']
 strPrograms = ['Comfort', 'Home', 'Sleep', 'Away','Manual']
 
+#device unit number definitions
+curTemp = 1
+setTemp = 2
+autoProgram = 3
+scene = 4
+boilerPressure = 5
+programInfo = 6
+gas = 7
+electricity = 8
+genElectricity = 9
+p1electricity = 10
+boilerState = 11
+
 import Domoticz
 import json
 from datetime import datetime
@@ -96,34 +109,34 @@ class BasePlugin:
     def onStart(self):
         Domoticz.Log("onStart called")
 
-        if 1 not in Devices:
-            Domoticz.Device(Name="Current Temperature", Unit=1, TypeName="Temperature", Used=1).Create()
-        if 2 not in Devices:
-            Domoticz.Device(Name="Setpoint Temperature", Unit=2, Type=242, Subtype=1, Used=1).Create()
-        if 3 not in Devices:
+        if curTemp not in Devices:
+            Domoticz.Device(Name="Current Temperature", Unit=curTemp, TypeName="Temperature", Used=1).Create()
+        if setTemp not in Devices:
+            Domoticz.Device(Name="Setpoint Temperature", Unit=setTemp, Type=242, Subtype=1, Used=1).Create()
+        if autoProgram not in Devices:
             programStateOptions= {"LevelActions": "||", "LevelNames": "|No|Yes|Temporary", "LevelOffHidden": "true", "SelectorStyle": "0"}
-            Domoticz.Device(Name="Auto Program", Unit=3, Image=15, TypeName="Selector Switch", Options=programStateOptions, Used=1).Create()
-        if 4 not in Devices:
+            Domoticz.Device(Name="Auto Program", Unit=autoProgram, Image=15, TypeName="Selector Switch", Options=programStateOptions, Used=1).Create()
+        if scene not in Devices:
             programOptions= {"LevelActions": "||||", "LevelNames": "|Away|Sleep|Home|Comfort|Manual", "LevelOffHidden": "true", "SelectorStyle": "0"}
-            Domoticz.Device(Name="Scene", Unit=4, Image=15, TypeName="Selector Switch", Options=programOptions, Used=1).Create()
-        if 5 not in Devices:
-            Domoticz.Device(Name="Boiler pressure", Unit=5, TypeName="Pressure", Used=1).Create()
-        if 6 not in Devices:
-            Domoticz.Device(Name="Program info", Unit=6, TypeName="Text", Used=1).Create()
-        if 7 not in Devices:
-            Domoticz.Device(Name="Gas", Unit=7, TypeName="Gas", Used=1).Create()
+            Domoticz.Device(Name="Scene", Unit=scene, Image=15, TypeName="Selector Switch", Options=programOptions, Used=1).Create()
+        if boilerPressure not in Devices:
+            Domoticz.Device(Name="Boiler pressure", Unit=boilerPressure, TypeName="Pressure", Used=1).Create()
+        if programInfo not in Devices:
+            Domoticz.Device(Name="Program info", Unit=programInfo, TypeName="Text", Used=1).Create()
+        if gas not in Devices:
+            Domoticz.Device(Name="Gas", Unit=gas, TypeName="Gas", Used=1).Create()
             #Domoticz.Device(Name="Gas", Unit=7, Type=243, Subtype=33, Switchtype=1).Create()
-        if 8 not in Devices:
+        if electricity not in Devices:
             #Domoticz.Device(Name="Electricity", Unit=8, TypeName="Usage").Create()
-            Domoticz.Device(Name="Electricity", Unit=8, TypeName="kWh", Used=1).Create()
-        if 9 not in Devices:
-            Domoticz.Device(Name="Generated Electricity", Unit=9, TypeName="Usage", Used=1).Create()
+            Domoticz.Device(Name="Electricity", Unit=electricity, TypeName="kWh", Used=1).Create()
+        if genElectricity not in Devices:
+            Domoticz.Device(Name="Generated Electricity", Unit=genElectricity, TypeName="Usage", Used=1).Create()
             #Domoticz.Device(Name="Generated Electricity", Unit=9, Type=243, Subtype=33, Switchtype=4).Create()
-        if 10 not in Devices:
-            Domoticz.Device(Name="P1 Electricity", Unit=10, Type=250, Subtype=1, Used=1).Create()
-        if 11 not in Devices:
+        if p1electricity not in Devices:
+            Domoticz.Device(Name="P1 Electricity", Unit=p1electricity, Type=250, Subtype=1, Used=1).Create()
+        if boilerState not in Devices:
             burnerInfoOptions= {"LevelActions": "||", "LevelNames": "|Off|CV|WW", "LevelOffHidden": "true", "SelectorStyle": "0"}
-            Domoticz.Device(Name="Boiler State", Unit=11, Image=15, TypeName="Selector Switch", Options=burnerInfoOptions, Used=1).Create()
+            Domoticz.Device(Name="Boiler State", Unit=boilerState, Image=15, TypeName="Selector Switch", Options=burnerInfoOptions, Used=1).Create()
 
         self.toonConnThermostatInfo = Domoticz.Connection(Name="Toon Connection", Transport="TCP/IP", Protocol="HTTP", Address=Parameters["Address"], Port=Parameters["Port"])
         self.toonConnThermostatInfo.Connect()
@@ -217,7 +230,7 @@ class BasePlugin:
         if 'currentTemp' in Response:
             currentTemp=float(Response['currentTemp'])/100
             strCurrentTemp="%.1f" % currentTemp
-            UpdateDevice(Unit=1, nValue=0, sValue=strCurrentTemp)
+            UpdateDevice(Unit=curTemp, nValue=0, sValue=strCurrentTemp)
             #if (strCurrentTemp!=self.strCurrentTemp):
             #    self.strCurrentTemp=strCurrentTemp
             #    Domoticz.Debug("Updating current Temperature = "+strCurrentTemp)
@@ -226,19 +239,19 @@ class BasePlugin:
         if 'currentSetpoint' in Response:
             currentSetpoint=float(Response['currentSetpoint'])/100
             strCurrentSetpoint="%.1f" % currentSetpoint
-            UpdateDevice(Unit=2, nValue=0, sValue=strCurrentSetpoint)
+            UpdateDevice(Unit=setTemp, nValue=0, sValue=strCurrentSetpoint)
 
         if 'programState' in Response:
             programState=int(Response['programState'])
-            UpdateDevice(Unit=3, nValue=0, sValue=programStates[programState])
+            UpdateDevice(Unit=autoProgram, nValue=0, sValue=programStates[programState])
 
         if 'activeState' in Response:
             program=int(Response['activeState'])
-            UpdateDevice(Unit=4, nValue=0, sValue=programs[program])
+            UpdateDevice(Unit=scene, nValue=0, sValue=programs[program])
             
         if 'burnerInfo' in Response:
             burnerInfo=int(Response['burnerInfo'])
-            UpdateDevice(Unit=11, nValue=0, sValue=burnerInfos[burnerInfo])
+            UpdateDevice(Unit=boilerState, nValue=0, sValue=burnerInfos[burnerInfo])
 
         if 'nextTime' in Response:
             toonInformation['nextTime']=Response['nextTime']
@@ -303,7 +316,7 @@ class BasePlugin:
                 if (zwaveDevInfo['internalAddress']==self.ia_gas):
                     Domoticz.Debug("Zwave Gas usage: "+ zwaveDevInfo['CurrentGasFlow'])
                     Domoticz.Debug("Zwave Gas counter: "+ zwaveDevInfo['CurrentGasQuantity'])
-                    UpdateDevice(Unit=7, nValue=0, sValue="%.0f" % (float(zwaveDevInfo['CurrentGasQuantity']) ))
+                    UpdateDevice(Unit=gas, nValue=0, sValue="%.0f" % (float(zwaveDevInfo['CurrentGasQuantity']) ))
 
                 if (zwaveDevInfo['internalAddress']==self.ia_ednt):
                     zwaveDeliveredNtFlow=zwaveDevInfo['CurrentElectricityFlow']
@@ -334,14 +347,14 @@ class BasePlugin:
             return
 
         Domoticz.Debug("zwaveDelivered: " + zwaveDeliveredFlow+";"+zwaveDeliveredQ)
-        UpdateDevice(Unit=8, nValue=0, sValue=zwaveDeliveredFlow+";"+zwaveDeliveredQ)
+        UpdateDevice(Unit=electricity, nValue=0, sValue=zwaveDeliveredFlow+";"+zwaveDeliveredQ)
 
         zwaveReceivedFlow=str(int(float(zwaveReceivedNtFlow))+int(float(zwaveReceivedLtFlow)))
         zwaveReceivedQ=str(int(float(zwaveReceivedNtQ))+int(float(zwaveReceivedLtQ)))
         Domoticz.Debug("zwaveReceived: " + zwaveReceivedFlow+";"+zwaveReceivedQ)
 
-        UpdateDevice(Unit=9, nValue=0, sValue=zwaveReceivedFlow+";"+zwaveReceivedQ)
-        UpdateDevice(Unit=10, nValue=0, sValue=str(int(float(zwaveDeliveredNtQ)))+";"+str(int(float(zwaveDeliveredLtQ)))+";"+str(int(float(zwaveReceivedNtQ)))+";"+str(int(float(zwaveReceivedLtQ)))+";"+zwaveDeliveredFlow+";"+zwaveReceivedFlow)
+        UpdateDevice(Unit=genElectricity, nValue=0, sValue=zwaveReceivedFlow+";"+zwaveReceivedQ)
+        UpdateDevice(Unit=p1electricity, nValue=0, sValue=str(int(float(zwaveDeliveredNtQ)))+";"+str(int(float(zwaveDeliveredLtQ)))+";"+str(int(float(zwaveReceivedNtQ)))+";"+str(int(float(zwaveReceivedLtQ)))+";"+zwaveDeliveredFlow+";"+zwaveReceivedFlow)
 
         return
 
@@ -399,7 +412,7 @@ class BasePlugin:
     def onCommand(self, Unit, Command, Level, Hue):
         Domoticz.Debug("onCommand called for Unit " + str(Unit) + ": Parameter '" + str(Command) + "', Level: " + str(Level))
 
-        if (Unit == 2):
+        if (Unit == setTemp):
             strLevel=str(int(Level*100))
             Domoticz.Debug("Toon New setpoint: %s" % str(Level))
             self.strCurrentSetpoint=str(Level)
@@ -407,28 +420,28 @@ class BasePlugin:
             self.toonSetControlUrl="/happ_thermstat?action=setSetpoint&Setpoint=" + strLevel
             self.toonConnSetControl.Connect()
 
-        if (Unit == 3):
+        if (Unit == autoProgram):
             Domoticz.Log("Toon ProgramState")
             Domoticz.Log(str(Level)+" -> " + rProgramStates[int((Level//10)-1)])
             self.programState=str(Level)
-            Devices[3].Update(nValue = 0, sValue = str(Level))
+            Devices[Unit].Update(nValue = 0, sValue = str(Level))
             self.toonSetControlUrl="/happ_thermstat?action=changeSchemeState&state="+rProgramStates[int((Level//10)-1)]
             self.toonConnSetControl.Connect()
 
-        if (Unit == 4):
+        if (Unit == scene):
             Domoticz.Debug("Toon Program")
             Domoticz.Debug(str(Level)+" -> "+rPrograms[int((Level//10)-1)])
             self.program=str(Level)
-            Devices[4].Update(nValue = 0, sValue = str(Level))
+            Devices[Unit].Update(nValue = 0, sValue = str(Level))
             self.toonSetControlUrl="/happ_thermstat?action=changeSchemeState&state=2&temperatureState="+rPrograms[int((Level//10)-1)]
             Domoticz.Debug(self.toonSetControlUrl)
             self.toonConnSetControl.Connect()
 
-        if (Unit == 11):
+        if (Unit == boilerState):
             Domoticz.Debug("Toon Boiler")
             Domoticz.Debug(str(Level)+" -> "+rBurnerInfos[int((Level//10)-1)])
             self.burnerInfo=str(Level)
-            Devices[11].Update(nValue = 0, sValue = str(Level))
+            Devices[Unit].Update(nValue = 0, sValue = str(Level))
             self.toonSetControlUrl="/happ_thermstat?action=changeSchemeState&state=2&temperatureState="+rBurnerInfos[int((Level//10)-1)]
             Domoticz.Debug(self.toonSetControlUrl)
             self.toonConnSetControl.Connect()
