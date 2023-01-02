@@ -30,6 +30,12 @@
         <param field="Mode3" label="Elec Low " width="50px" required="true" default="2.6" />
         <param field="Mode4" label="Elec Normal return " width="50px" required="true" default="2.5" />
         <param field="Mode5" label="Elec Low return " width="50px" required="true" default="2.7" />
+        <param field="Scene1" label="Temp Away " width="50px" required="true" default="17.0" >
+        <description><br/>==== Scene configuration ====</description>
+        </param>
+        <param field="Scene2" label="Temp Sleep " width="50px" required="true" default="18.0" />
+        <param field="Scene3" label="Temp Home " width="50px" required="true" default="19.5" />
+        <param field="Scene4" label="Temp Comfort " width="50px" required="true" default="20.0" />
     </params>
 </plugin>
 
