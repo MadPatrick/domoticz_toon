@@ -165,7 +165,6 @@ class BasePlugin:
         Domoticz.Heartbeat(5)
         return True
 
-
     def onStop(self):
         Domoticz.Debug("onStop called")
 
@@ -197,7 +196,6 @@ class BasePlugin:
 
             Domoticz.Debug("Connecting to: "+Parameters["Address"]+":"+Parameters["Port"] + requestUrl)
             Connection.Send({"Verb":"GET", "URL":requestUrl, "Headers": headers})
-
 
         else:
             Domoticz.Log("Failed to connect ("+str(Status)+":"+Description+") to "+Parameters["Address"]+":"+Parameters["Port"])
@@ -241,6 +239,15 @@ class BasePlugin:
             #    self.strCurrentTemp=strCurrentTemp
             #    Domoticz.Debug("Updating current Temperature = "+strCurrentTemp)
             #    Devices[1].Update(nValue=0, sValue=strCurrentTemp)
+            if strCurrentTemp == Parameters["Scene1"]:
+                UpdateDevice(Unit=scene, nValue=0, sValue=programs[1])
+            if strCurrentTemp == Parameters["Scene2"]:
+                UpdateDevice(Unit=scene, nValue=0, sValue=programs[2])
+            if strCurrentTemp == Parameters["Scene3"]:
+                UpdateDevice(Unit=scene, nValue=0, sValue=programs[3])
+            if strCurrentTemp == Parameters["Scene4"]:
+                UpdateDevice(Unit=scene, nValue=0, sValue=programs[4])
+                
 
         if 'currentSetpoint' in Response:
             currentSetpoint=float(Response['currentSetpoint'])/100
