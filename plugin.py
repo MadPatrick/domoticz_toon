@@ -23,14 +23,14 @@
         <description>==== general configuration ====</description>
         </param>
         <param field="Port" label="Port" width="50px" required="true" default="80" />
-        <param field="Mode1" label="Gas " width="50px" required="true" default="2.1" >
+        <param field="Mode1" label="Gas" width="50px" required="true" default="2.1" >
 	<description><br/>==== Devices configuration ====	
         <br/>Get the internalAddress of the devices via : http://TOONIP/hdrv_zwave?action=getDevices.json</description>
         </param>
-        <param field="Mode2" label="Elec Normal " width="50px" required="true" default="2.4" />
-        <param field="Mode3" label="Elec Low " width="50px" required="true" default="2.6" />
-        <param field="Mode4" label="Elec Normal return " width="50px" required="true" default="2.5" />
-        <param field="Mode5" label="Elec Low return " width="50px" required="true" default="2.7" />
+        <param field="Mode2" label="Elec del_nt" width="50px" required="true" default="2.4" />
+        <param field="Mode3" label="Elec del_lt" width="50px" required="true" default="2.6" />
+        <param field="Mode4" label="Elec rec_nt" width="50px" required="true" default="2.5" />
+        <param field="Mode5" label="Elec rec_lt" width="50px" required="true" default="2.7" />
         <param field="Scene1" label="Temp Away " width="50px" required="true" default="17.0" >
         <description><br/>==== Scene configuration ====</description>
         </param>
