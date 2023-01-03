@@ -3,10 +3,10 @@
 # 
 #
 """
-<plugin key="RootedToonPlug" name="Toon Rooted" author="MadPatrick" version="1.2.0" externallink="https://www.domoticz.com/forum/viewtopic.php?f=34&t=34986">
+<plugin key="RootedToonPlug" name="Toon Rooted" author="MadPatrick" version="1.2.1" externallink="https://www.domoticz.com/forum/viewtopic.php?f=34&t=34986">
     <description>
 	<br/><h2>Domoticz Toon Rooted plugin</h2><br/>
-        version: 1.2.0
+        version: 1.2.1
         <br/>The configuration contains the following sections:
         <ul style="list-style-type:square">
             <li>Interfacing between Domoticz and a rooted Toon</li>
@@ -24,7 +24,8 @@
         </param>
         <param field="Port" label="Port" width="50px" required="true" default="80" />
         <param field="Mode1" label="Gas " width="50px" required="true" default="2.1" >
-        <description>==== Port configuration ====</description>
+	<description><br/>==== Devices configuration ====	
+        <br/>Get the internalAddress of the devices via : http://TOONIP/hdrv_zwave?action=getDevices.json</description>
         </param>
         <param field="Mode2" label="Elec Normal " width="50px" required="true" default="2.4" />
         <param field="Mode3" label="Elec Low " width="50px" required="true" default="2.6" />
@@ -87,6 +88,7 @@ electricity = 8
 genElectricity = 9
 p1electricity = 10
 boilerState = 11
+boilerModulation = 12
 
 import Domoticz
 import json
@@ -143,6 +145,9 @@ class BasePlugin:
         if boilerState not in Devices:
             burnerInfoOptions= {"LevelActions": "||", "LevelNames": "|Off|CV|WW", "LevelOffHidden": "true", "SelectorStyle": "0"}
             Domoticz.Device(Name="Boiler State", Unit=boilerState, Image=15, TypeName="Selector Switch", Options=burnerInfoOptions, Used=1).Create()
+         if 12 not in Devices:	
+            Domoticz.Device(Name="Brander modulatie", Unit=boilerModulation, Type=243, Subtype=6, Used=1).Create()	
+
 
         self.toonConnThermostatInfo = Domoticz.Connection(Name="Toon Connection", Transport="TCP/IP", Protocol="HTTP", Address=Parameters["Address"], Port=Parameters["Port"])
         self.toonConnThermostatInfo.Connect()
@@ -265,6 +270,10 @@ class BasePlugin:
         if 'burnerInfo' in Response:
             burnerInfo=int(Response['burnerInfo'])
             UpdateDevice(Unit=boilerState, nValue=0, sValue=burnerInfos[burnerInfo])
+	
+	if 'currentModulationLevel' in Response:
+            currentModulationLevel=int(Response['currentModulationLevel'])	
+            UpdateDevice(Unit=boilerModulation, nValue=0, sValue=currentModulationLevel)
 
         if 'nextTime' in Response:
             toonInformation['nextTime']=Response['nextTime']
