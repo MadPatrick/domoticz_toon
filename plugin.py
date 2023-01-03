@@ -145,9 +145,11 @@ class BasePlugin:
         if boilerState not in Devices:
             burnerInfoOptions= {"LevelActions": "||", "LevelNames": "|Off|CV|WW", "LevelOffHidden": "true", "SelectorStyle": "0"}
             Domoticz.Device(Name="Boiler State", Unit=boilerState, Image=15, TypeName="Selector Switch", Options=burnerInfoOptions, Used=1).Create()
-         if 12 not in Devices:	
+        if boilerModulation not in Devices:	
             Domoticz.Device(Name="Brander modulatie", Unit=boilerModulation, Type=243, Subtype=6, Used=1).Create()	
 
+        Domoticz.Debugging(2)
+        DumpConfigToLog()
 
         self.toonConnThermostatInfo = Domoticz.Connection(Name="Toon Connection", Transport="TCP/IP", Protocol="HTTP", Address=Parameters["Address"], Port=Parameters["Port"])
         self.toonConnThermostatInfo.Connect()
@@ -271,7 +273,7 @@ class BasePlugin:
             burnerInfo=int(Response['burnerInfo'])
             UpdateDevice(Unit=boilerState, nValue=0, sValue=burnerInfos[burnerInfo])
 	
-	if 'currentModulationLevel' in Response:
+        if 'currentModulationLevel' in Response:
             currentModulationLevel=int(Response['currentModulationLevel'])	
             UpdateDevice(Unit=boilerModulation, nValue=0, sValue=currentModulationLevel)
 
@@ -524,21 +526,21 @@ def onHeartbeat():
     global _plugin
     _plugin.onHeartbeat()
 
-    # Generic helper functions
+# Generic helper functions
 def DumpConfigToLog():
+    Domoticz.Debug("Parameters count: " + str(len(Parameters)))
     for x in Parameters:
         if Parameters[x] != "":
-            Domoticz.Debug( "'" + x + "':'" + str(Parameters[x]) + "'")
+            Domoticz.Debug("Parameter: '" + x + "':'" + str(Parameters[x]) + "'")
+    Configurations = Domoticz.Configuration()
+    Domoticz.Debug("Configuration count: " + str(len(Configurations)))
+    for x in Configurations:
+        if Configurations[x] != "":
+            Domoticz.Debug( "Configuration '" + x + "':'" + str(Configurations[x]) + "'")
     Domoticz.Debug("Device count: " + str(len(Devices)))
     for x in Devices:
         Domoticz.Debug("Device:           " + str(x) + " - " + str(Devices[x]))
-        Domoticz.Debug("Device ID:       '" + str(Devices[x].ID) + "'")
-        Domoticz.Debug("Device Name:     '" + Devices[x].Name + "'")
-        Domoticz.Debug("Device nValue:    " + str(Devices[x].nValue))
-        Domoticz.Debug("Device sValue:   '" + Devices[x].sValue + "'")
-        Domoticz.Debug("Device LastLevel: " + str(Devices[x].LastLevel))
     return
-
 
 def UpdateDevice(Unit, nValue, sValue, TimedOut=0, AlwaysUpdate=False):
     # Make sure that the Domoticz device still exists (they can be deleted) before updating it
