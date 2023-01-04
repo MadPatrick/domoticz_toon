@@ -3,10 +3,10 @@
 # 
 #
 """
-<plugin key="RootedToonPlug" name="Toon Rooted" author="MadPatrick" version="1.2.1" externallink="https://www.domoticz.com/forum/viewtopic.php?f=34&t=34986">
+<plugin key="RootedToonPlug" name="Toon Rooted" author="MadPatrick" version="1.3.1" externallink="https://www.domoticz.com/forum/viewtopic.php?f=34&t=34986">
     <description>
 	<br/><h2>Domoticz Toon Rooted plugin</h2><br/>
-        version: 1.2.1
+        version: 1.3.1
         <br/>The configuration contains the following sections:
         <ul style="list-style-type:square">
             <li>Interfacing between Domoticz and a rooted Toon</li>
@@ -23,25 +23,26 @@
         <description>==== general configuration ====</description>
         </param>
         <param field="Port" label="Port" width="50px" required="true" default="80" />
-        <param field="Mode1" label="Gas" width="50px" required="true" default="2.1" >
-	<description><br/>==== Devices configuration ====	
-        <br/>Get the internalAddress of the devices via : http://TOONIP/hdrv_zwave?action=getDevices.json</description>
+        <param field="Mode6" label="Toon version" width="200px" required="true" >
+            <options>
+                <option label="v1" value="v1"/>
+                <option label="v2" value="v2"  default="true" />
+                <option label="user defined" value="user"/>
+            </options>
         </param>
-        <param field="Mode2" label="Elec del_nt" width="50px" required="true" default="2.4" />
-        <param field="Mode3" label="Elec del_lt" width="50px" required="true" default="2.6" />
-        <param field="Mode4" label="Elec rec_nt" width="50px" required="true" default="2.5" />
-        <param field="Mode5" label="Elec rec_lt" width="50px" required="true" default="2.7" />
-        <param field="Scene1" label="Temp Away " width="50px" required="true" default="17.0" >
+        <param field="Mode5" label="Zwave adresses user defined" width="200px" default="2.1;2.4;2.6;2.5;2.7" >
+        <description><br/>enter user defined ZWave adresses separated by ';', example: 2.1;2.4;2.6;2.5;2.7</description>
+        </param>
+        <param field="Mode1" label="Temp Away " width="50px" required="true" default="17.0" >
         <description><br/>==== Scene configuration ====</description>
         </param>
-        <param field="Scene2" label="Temp Sleep " width="50px" required="true" default="18.0" />
-        <param field="Scene3" label="Temp Home " width="50px" required="true" default="19.5" />
-        <param field="Scene4" label="Temp Comfort " width="50px" required="true" default="20.0" />
+        <param field="Mode2" label="Temp Sleep " width="50px" required="true" default="18.0" />
+        <param field="Mode3" label="Temp Home " width="50px" required="true" default="19.5" />
+        <param field="Mode4" label="Temp Comfort " width="50px" required="true" default="20.0" />
     </params>
 </plugin>
 
 """
-
 
 #found URLs:
 #happ_pwrusage?action=GetProfileInfo # house and family profile
@@ -90,6 +91,13 @@ p1electricity = 10
 boilerState = 11
 boilerModulation = 12
 
+#zwave device adresses
+zwaveAdress = {
+    "v1": ["2.1", "2.3", "2.5", "2.4", "2.6"],
+    "v2": ["2.1", "2.4", "2.6", "2.5", "2.7"],
+    "user": ["3.1", "3.4", "3.6", "3.5", "3.7"]
+}
+ 
 import Domoticz
 import json
 from datetime import datetime
@@ -162,12 +170,19 @@ class BasePlugin:
 
         self.toonConnSetControl= Domoticz.Connection(Name="Toon Connection", Transport="TCP/IP", Protocol="HTTP", Address=Parameters["Address"], Port=Parameters["Port"])
 
-        Domoticz.Log(json.dumps(Parameters))
-        self.ia_gas=Parameters["Mode1"]
-        self.ia_ednt=Parameters["Mode2"]
-        self.ia_edlt=Parameters["Mode3"]
-        self.ia_ernt=Parameters["Mode4"]
-        self.ia_erlt=Parameters["Mode5"]
+        #Domoticz.Log(json.dumps(Parameters))
+        if Parameters["Mode6"] == "user":
+            paramList = Parameters["Mode5"].split(';')
+            if len(paramList) != 5:
+                Domoticz.Error("Invalid list of user defined, please provide exactly 5 adresses, separated by semi colon ';'")
+                return
+        else:
+            paramList = zwaveAdress[Parameters["Mode6"]]
+        self.ia_gas=paramList[0]
+        self.ia_ednt=paramList[1]
+        self.ia_edlt=paramList[2]
+        self.ia_ernt=paramList[3]
+        self.ia_erlt=paramList[4]
 
         Domoticz.Heartbeat(5)
         return True
@@ -242,24 +257,6 @@ class BasePlugin:
             currentTemp=float(Response['currentTemp'])/100
             strCurrentTemp="%.1f" % currentTemp
             UpdateDevice(Unit=curTemp, nValue=0, sValue=strCurrentTemp)
-            #if (strCurrentTemp!=self.strCurrentTemp):
-            #    self.strCurrentTemp=strCurrentTemp
-            #    Domoticz.Debug("Updating current Temperature = "+strCurrentTemp)
-            #    Devices[1].Update(nValue=0, sValue=strCurrentTemp)
-            if strCurrentTemp == Parameters["Scene1"]:
-                UpdateDevice(Unit=scene, nValue=0, sValue=programs[1])
-            if strCurrentTemp == Parameters["Scene2"]:
-                UpdateDevice(Unit=scene, nValue=0, sValue=programs[2])
-            if strCurrentTemp == Parameters["Scene3"]:
-                UpdateDevice(Unit=scene, nValue=0, sValue=programs[3])
-            if strCurrentTemp == Parameters["Scene4"]:
-                UpdateDevice(Unit=scene, nValue=0, sValue=programs[4])
-                
-
-        if 'currentSetpoint' in Response:
-            currentSetpoint=float(Response['currentSetpoint'])/100
-            strCurrentSetpoint="%.1f" % currentSetpoint
-            UpdateDevice(Unit=setTemp, nValue=0, sValue=strCurrentSetpoint)
 
         if 'programState' in Response:
             programState=int(Response['programState'])
@@ -289,11 +286,23 @@ class BasePlugin:
         if 'nextSetpoint'in Response:
             toonInformation['nextSetpoint']=Response['nextSetpoint']
 
+        if 'currentSetpoint' in Response:
+            currentSetpoint=float(Response['currentSetpoint'])/100
+            strCurrentSetpoint="%.1f" % currentSetpoint
+            UpdateDevice(Unit=setTemp, nValue=0, sValue=strCurrentSetpoint)
+            if strCurrentSetpoint == Parameters["Mode1"]:
+                UpdateDevice(Unit=scene, nValue=0, sValue=programs[3])
+            if strCurrentSetpoint == Parameters["Mode2"]:
+                UpdateDevice(Unit=scene, nValue=0, sValue=programs[2])
+            if strCurrentSetpoint == Parameters["Mode3"]:
+                UpdateDevice(Unit=scene, nValue=0, sValue=programs[1])
+            if strCurrentSetpoint == Parameters["Mode4"]:
+                UpdateDevice(Unit=scene, nValue=0, sValue=programs[0])
 
         if (len(toonInformation)==4):
             strToonInformation='No information received from Toon yet (%s)' % toonInformation['nextProgram']
-            if int(toonInformation['nextProgram']==-1):
-                strToonInformation="No program information available"
+            if int(toonInformation['nextProgram'])==-1:
+                strToonInformation="No program scheduled"
 
             if int(toonInformation['nextProgram'])==0:
                 strToonInformation="Progam is off"
@@ -305,7 +314,7 @@ class BasePlugin:
                 strNextSetpoint="%.1f" % (float(toonInformation['nextSetpoint'])/100)
                 strToonInformation="Next program %s (%s C) at %s" % (strNextProgram, strNextSetpoint, strNextTime)
 
-            UpdateDevice(Unit=6, nValue=0, sValue=strToonInformation)
+            UpdateDevice(Unit=programInfo, nValue=0, sValue=strToonInformation)
 
         return
 
@@ -314,10 +323,9 @@ class BasePlugin:
         if 'boilerPressure' in Response:
             Domoticz.Debug("boilerpressure: "+("%.1f" % Response['boilerPressure']))
             strBoilerPressure="%.1f" % Response['boilerPressure']
-            UpdateDevice(Unit=5, nValue=0, sValue=strBoilerPressure)
+            UpdateDevice(Unit=boilerPressure, nValue=0, sValue=strBoilerPressure)
 
         return
-
 
     def onMessageZwaveInfo(self, Connection, Response):
         Domoticz.Debug("onMessageZwaveInfo called")
@@ -331,10 +339,8 @@ class BasePlugin:
         zwaveReceivedLtQ='0'
         zwaveReceivedNtQ='0'
 
-
         for zwaveDev in Response:
             zwaveDevInfo=Response[zwaveDev]
-
 
             if 'type' in zwaveDevInfo:
                 if (zwaveDevInfo['internalAddress']==self.ia_gas):
@@ -444,6 +450,7 @@ class BasePlugin:
             self.toonSetControlUrl="/happ_thermstat?action=setSetpoint&Setpoint=" + strLevel
             self.toonConnSetControl.Connect()
 
+
         if (Unit == autoProgram):
             Domoticz.Log("Toon ProgramState")
             Domoticz.Log(str(Level)+" -> " + rProgramStates[int((Level//10)-1)])
@@ -489,7 +496,6 @@ class BasePlugin:
 
         if (self.toonConnZwaveInfo.Connected()==False):
             self.toonConnZwaveInfo.Connect()
-
 
 global _plugin
 _plugin = BasePlugin()
