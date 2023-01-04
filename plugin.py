@@ -30,8 +30,8 @@
                 <option label="user defined" value="user"/>
             </options>
         </param>
-        <param field="Mode5" label="Zwave adresses user defined" width="200px" default="2.1;2.4;2.6;2.5;2.7" >
-        <description><br/>enter user defined ZWave adresses separated by ';', example: 2.1;2.4;2.6;2.5;2.7</description>
+        <param field="Mode5" label="P1 adresses user defined" width="200px" default="2.1;2.4;2.6;2.5;2.7" >
+        <description><br/>Enter user defined P1 adresses separated by ';', example: 2.1;2.4;2.6;2.5;2.7</description>
         </param>
         <param field="Mode1" label="Temp Away " width="50px" required="true" default="17.0" >
         <description><br/>==== Scene configuration ====</description>
