@@ -349,7 +349,8 @@ class BasePlugin:
         Domoticz.Debug("onMessagetoonTSCinfo called")	
         if 'humidity' in Response:	
             humidity=float(Response['humidity'])	
-            strhumidity,bagger=humidity.split(",")
+            strhumidity="%.1f" % humidity
+            strhumidity , bagger=Response['humidity'].split(",")
             temperature=float(Response['temperature'])	
             strtemperature="%.1f" % temperature
             #UpdateDevice(Unit=RoomHumidity, nValue=0, sValue=strhumidity+";"+strtemperature)
