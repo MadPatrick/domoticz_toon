@@ -3,10 +3,10 @@
 # 
 #
 """
-<plugin key="RootedToonPlug" name="Toon Rooted" author="MadPatrick" version="1.4.1" externallink="https://www.domoticz.com/forum/viewtopic.php?f=34&t=34986">
+<plugin key="RootedToonPlug" name="Toon Rooted" author="MadPatrick" version="1.4.2" externallink="https://www.domoticz.com/forum/viewtopic.php?f=34&t=34986">
     <description>
         <br/><h2>Domoticz Toon Rooted plugin</h2><br/>
-        version: 1.4.1
+        version: 1.4.2
         <br/>The configuration contains the following sections:
         <ul style="list-style-type:square">
             <li>Interfacing between Domoticz and a rooted Toon</li>
@@ -193,6 +193,8 @@ class BasePlugin:
         Domoticz.Heartbeat(heartBeat)
         return True
 
+        #fetch scenes config
+        self.getScenesConfig(self.toonConnThermostatInfo)
 
     def onStop(self):
         Domoticz.Debug("onStop called")
@@ -533,6 +535,17 @@ class BasePlugin:
             
         if (self.toonTSCinfo.Connected()==False):	
             self.toonTSCinfo.Connect()
+
+    def processScenesConfig(self, json_response):
+        Domoticz.Debug("processing scenes config on data: "+str(json_response))
+
+    def getScenesConfig(self, connection):
+        requestUrl = "/hcb_config?action=getObjectConfigTree&package=happ_thermstat&internalAddress=thermostatStates"
+        if connection.Connected() == False:
+            connection.Connect()
+        connection.Send({"Verb":"GET", "URL":requestUrl, "Headers": self.headers})
+        return
+
 
 global _plugin
 _plugin = BasePlugin()
