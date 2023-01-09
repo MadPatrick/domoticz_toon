@@ -5,14 +5,14 @@
 """
 <plugin key="RootedToonPlug" name="Toon Rooted" author="MadPatrick" version="1.4.0" externallink="https://www.domoticz.com/forum/viewtopic.php?f=34&t=34986">
     <description>
-	<br/><h2>Domoticz Toon Rooted plugin</h2><br/>
+        <br/><h2>Domoticz Toon Rooted plugin</h2><br/>
         version: 1.4.0
         <br/>The configuration contains the following sections:
         <ul style="list-style-type:square">
             <li>Interfacing between Domoticz and a rooted Toon</li>
             <li>The rooted toon is directly queried via http json commands</li>
-            <li>Toon v1 Zwave values: 2.1, 2.3, 2.5, 2.4 & 2.6</li>
-            <li>Toon v2 Zwave values: 2.1, 2.4, 2.6, 2.5 & 2.7</li>
+            <li>Toon v1 P1_dev values: 2.1, 2.3, 2.5, 2.4 & 2.6</li>
+            <li>Toon v2 P1_dev values: 2.1, 2.4, 2.6, 2.5 & 2.7</li>
         </ul>
         Get the internalAddress of the device via : http://TOONIP/hdrv_zwave?action=getDevices.json
        <br/>
@@ -33,10 +33,10 @@
         <param field="Mode5" label="P1 adresses user defined" width="200px" default="2.1;2.4;2.6;2.5;2.7" >
         <description><br/>Enter user defined P1 adresses separated by ';', example: 2.1;2.4;2.6;2.5;2.7</description>
         </param>
-        <param field="Mode1" label="Temp Away " width="50px" required="true" default="17.0" >
+        <param field="Mode1" label="Temp Away " width="50px" required="true" default="18.0" >
         <description><br/>==== Scene configuration ====</description>
         </param>
-        <param field="Mode2" label="Temp Sleep " width="50px" required="true" default="18.0" />
+        <param field="Mode2" label="Temp Sleep " width="50px" required="true" default="17.0" />
         <param field="Mode3" label="Temp Home " width="50px" required="true" default="19.5" />
         <param field="Mode4" label="Temp Comfort " width="50px" required="true" default="20.0" />
     </params>
@@ -61,11 +61,11 @@
 #temporary 2 -> '30'
 programStates = ['10','20','30']
 rProgramStates = ['0','1','2']
-strProgramStates = ['No', 'Yes', 'Manual']
+strProgramStates = ['Nee', 'Ja', 'Manual']
 
 burnerInfos = ['10','20','30']
 rBurnerInfos = ['0','1','2']
-strBurnerInfos = ['Off', 'CV', 'WW']
+strBurnerInfos = ['Uit', 'CV', 'WW']
 
 #ComfortLevelValue: 0 ->'40'
 #HomeLevelValue: 1 -> '30'
@@ -75,7 +75,7 @@ strBurnerInfos = ['Off', 'CV', 'WW']
 #programs = ['40','30','20','10','60']
 programs = ['40','30','20','10','50']
 rPrograms = ['3','2','1','0','4']
-strPrograms = ['Comfort', 'Home', 'Sleep', 'Away','Manual']
+strPrograms = ['Comfort', 'Thuis', 'Slapen', 'Weg','Manual']
 
 #device unit number definitions
 curTemp = 1
@@ -130,10 +130,10 @@ class BasePlugin:
         if setTemp not in Devices:
             Domoticz.Device(Name="Setpoint Temperature", Unit=setTemp, Type=242, Subtype=1, Used=1).Create()
         if autoProgram not in Devices:
-            programStateOptions= {"LevelActions": "||", "LevelNames": "|No|Yes|Temporary", "LevelOffHidden": "true", "SelectorStyle": "0"}
+            programStateOptions= {"LevelActions": "||", "LevelNames": "|Nee|Ja|Manual", "LevelOffHidden": "true", "SelectorStyle": "0"}
             Domoticz.Device(Name="Auto Program", Unit=autoProgram, Image=15, TypeName="Selector Switch", Options=programStateOptions, Used=1).Create()
         if scene not in Devices:
-            programOptions= {"LevelActions": "||||", "LevelNames": "|Away|Sleep|Home|Comfort|Manual", "LevelOffHidden": "true", "SelectorStyle": "0"}
+            programOptions= {"LevelActions": "||||", "LevelNames": "|Weg|Slapen|Thuis|Comfort|Manual", "LevelOffHidden": "true", "SelectorStyle": "0"}
             Domoticz.Device(Name="Scene", Unit=scene, Image=15, TypeName="Selector Switch", Options=programOptions, Used=1).Create()
         if boilerPressure not in Devices:
             Domoticz.Device(Name="Boiler pressure", Unit=boilerPressure, TypeName="Pressure", Used=1).Create()
@@ -141,17 +141,14 @@ class BasePlugin:
             Domoticz.Device(Name="Program info", Unit=programInfo, TypeName="Text", Used=1).Create()
         if gas not in Devices:
             Domoticz.Device(Name="Gas", Unit=gas, TypeName="Gas", Used=1).Create()
-            #Domoticz.Device(Name="Gas", Unit=7, Type=243, Subtype=33, Switchtype=1).Create()
         if electricity not in Devices:
-            #Domoticz.Device(Name="Electricity", Unit=8, TypeName="Usage").Create()
             Domoticz.Device(Name="Electricity", Unit=electricity, TypeName="kWh", Used=1).Create()
         if genElectricity not in Devices:
             Domoticz.Device(Name="Generated Electricity", Unit=genElectricity, TypeName="Usage", Used=1).Create()
-            #Domoticz.Device(Name="Generated Electricity", Unit=9, Type=243, Subtype=33, Switchtype=4).Create()
         if p1electricity not in Devices:
             Domoticz.Device(Name="P1 Electricity", Unit=p1electricity, Type=250, Subtype=1, Used=1).Create()
         if boilerState not in Devices:
-            burnerInfoOptions= {"LevelActions": "||", "LevelNames": "|Off|CV|WW", "LevelOffHidden": "true", "SelectorStyle": "0"}
+            burnerInfoOptions= {"LevelActions": "||", "LevelNames": "|Uit|CV|WW", "LevelOffHidden": "true", "SelectorStyle": "0"}
             Domoticz.Device(Name="Boiler State", Unit=boilerState, Image=15, TypeName="Selector Switch", Options=burnerInfoOptions, Used=1).Create()
         if boilerModulation not in Devices:	
             Domoticz.Device(Name="Brander modulatie", Unit=boilerModulation, Type=243, Subtype=6, Used=1).Create()	
@@ -292,6 +289,7 @@ class BasePlugin:
             currentSetpoint=float(Response['currentSetpoint'])/100
             strCurrentSetpoint="%.1f" % currentSetpoint
             UpdateDevice(Unit=setTemp, nValue=0, sValue=strCurrentSetpoint)
+            Domoticz.Log("Device Mode Setpoint changed")
             if strCurrentSetpoint == Parameters["Mode1"]:
                 UpdateDevice(Unit=scene, nValue=0, sValue=programs[3])
             if strCurrentSetpoint == Parameters["Mode2"]:
