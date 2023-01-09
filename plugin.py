@@ -91,6 +91,7 @@ p1electricity = 10
 boilerState = 11
 boilerModulation = 12
 boilerSetPoint = 13
+RoomHumidity = 14
 
 #zwave device adresses
 zwaveAdress = {
@@ -155,6 +156,8 @@ class BasePlugin:
             Domoticz.Device(Name="Ketel modulatie", Unit=boilerModulation, Type=243, Subtype=6, Used=1).Create()
         if boilerSetPoint not in Devices:	
             Domoticz.Device(Name="Ketel setpoint", Unit=boilerSetPoint, Type=80, Subtype=5, Used=1).Create()
+        if RoomHumidity not in Devices:	
+            Domoticz.Device(Name="Luchtvochtigheid", Unit=RoomHumidity, Type=81, Subtype=1, Used=1).Create()
 
         Domoticz.Debugging(2)
         DumpConfigToLog()
@@ -169,6 +172,8 @@ class BasePlugin:
         self.toonConnZwaveInfo.Connect()
 
         self.toonConnSetControl= Domoticz.Connection(Name="Toon Connection", Transport="TCP/IP", Protocol="HTTP", Address=Parameters["Address"], Port=Parameters["Port"])
+        
+	self.toonTSCinfo= Domoticz.Connection(Name="Toon Connection", Transport="TCP/IP", Protocol="HTTP", Address=Parameters["Address"], Port=Parameters["Port"])
 
         #Domoticz.Log(json.dumps(Parameters))
         if Parameters["Mode6"] == "user":
@@ -217,6 +222,10 @@ class BasePlugin:
             if (Connection == self.toonConnSetControl):
                 Domoticz.Debug("getConnSetControl created")
                 requestUrl=self.toonSetControlUrl
+            if (Connection == self.toonTSCinfo):
+                Domoticz.Debug("toonTSCinfo created")
+                requestUrl="/tsc/sensors"
+
 
             Domoticz.Debug("Connecting to: "+Parameters["Address"]+":"+Parameters["Port"] + requestUrl)
             Connection.Send({"Verb":"GET", "URL":requestUrl, "Headers": headers})
@@ -335,6 +344,15 @@ class BasePlugin:
 
         return
 
+    def onMessagetoonTSCinfo(self, Connection, Response):	
+        Domoticz.Debug("onMessagetoonTSCinfo called")	
+        if 'humidity' in Response:	
+            humidity=float(Response['humidity'])	
+            strhumidity="%.1f" % humidity
+            UpdateDevice(Unit=RoomHumidity, nValue=0, sValue=strhumidity)
+
+        return
+
     def onMessageZwaveInfo(self, Connection, Response):
         Domoticz.Debug("onMessageZwaveInfo called")
         zwaveDeliveredLtFlow='0'
@@ -414,6 +432,9 @@ class BasePlugin:
                 return
             if (Connection==self.toonConnSetControl):
                 Domoticz.Log("Something unexpected while onMessage: toonConnSetControl")
+                return	
+            if (Connection==self.toonTSCinfo):	
+                Domoticz.Log("Something unexpected while onMessage: toonTSCinfo")
                 return
 
             Domoticz.Log("Unknown connection")
@@ -443,6 +464,9 @@ class BasePlugin:
 
         if (Connection==self.toonConnZwaveInfo):
             self.onMessageZwaveInfo(Connection, Response)
+	
+        if (Connection==self.toonTSCinfo):	
+            self.onMessagetoonTSCinfo(Connection, Response)
 
         return
 
@@ -504,6 +528,9 @@ class BasePlugin:
 
         if (self.toonConnZwaveInfo.Connected()==False):
             self.toonConnZwaveInfo.Connect()
+	
+        if (self.toonTSCinfo.Connected()==False):	
+            self.toonTSCinfo.Connect()
 
 global _plugin
 _plugin = BasePlugin()
