@@ -157,7 +157,7 @@ class BasePlugin:
         if boilerSetPoint not in Devices:	
             Domoticz.Device(Name="Ketel setpoint", Unit=boilerSetPoint, Type=80, Subtype=5, Used=1).Create()
         if RoomHumidity not in Devices:	
-            Domoticz.Device(Name="Luchtvochtigheid", Unit=RoomHumidity, Type=81, Subtype=1, Used=1).Create()
+            Domoticz.Device(Name="Luchtvochtigheid", Unit=RoomHumidity, Type=243, Subtype=6, Used=1).Create()
 
         Domoticz.Debugging(2)
         DumpConfigToLog()
@@ -222,6 +222,9 @@ class BasePlugin:
             if (Connection == self.toonConnSetControl):
                 Domoticz.Debug("getConnSetControl created")
                 requestUrl=self.toonSetControlUrl
+            if (Connection == self.toonTSCinfo):
+                Domoticz.Debug("toonTSCinfo created")
+                requestUrl="/tsc/sensors"
 
             Domoticz.Debug("Connecting to: "+Parameters["Address"]+":"+Parameters["Port"] + requestUrl)
             Connection.Send({"Verb":"GET", "URL":requestUrl, "Headers": headers})
