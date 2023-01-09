@@ -352,7 +352,8 @@ class BasePlugin:
             strhumidity="%.1f" % humidity
             temperature=float(Response['temperature'])	
             strtemperature="%.1f" % temperature
-            UpdateDevice(Unit=RoomHumidity, nValue=0, sValue=strhumidity+";"+strtemperature)
+            #UpdateDevice(Unit=RoomHumidity, nValue=0, sValue=strhumidity+";"+strtemperature)
+            UpdateDevice(Unit=RoomHumidity, nValue=0, sValue=strtemperature+";"+strhumidity+";0")
 
         return
 
