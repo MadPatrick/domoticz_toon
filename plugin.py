@@ -173,8 +173,8 @@ class BasePlugin:
 
         self.toonConnSetControl= Domoticz.Connection(Name="Toon Connection", Transport="TCP/IP", Protocol="HTTP", Address=Parameters["Address"], Port=Parameters["Port"])
         
-	self.toonTSCinfo= Domoticz.Connection(Name="Toon Connection", Transport="TCP/IP", Protocol="HTTP", Address=Parameters["Address"], Port=Parameters["Port"])
-
+        self.toonTSCinfo= Domoticz.Connection(Name="Toon Connection", Transport="TCP/IP", Protocol="HTTP", Address=Parameters["Address"], Port=Parameters["Port"])
+        
         #Domoticz.Log(json.dumps(Parameters))
         if Parameters["Mode6"] == "user":
             paramList = Parameters["Mode5"].split(';')
@@ -222,10 +222,6 @@ class BasePlugin:
             if (Connection == self.toonConnSetControl):
                 Domoticz.Debug("getConnSetControl created")
                 requestUrl=self.toonSetControlUrl
-            if (Connection == self.toonTSCinfo):
-                Domoticz.Debug("toonTSCinfo created")
-                requestUrl="/tsc/sensors"
-
 
             Domoticz.Debug("Connecting to: "+Parameters["Address"]+":"+Parameters["Port"] + requestUrl)
             Connection.Send({"Verb":"GET", "URL":requestUrl, "Headers": headers})
@@ -343,7 +339,7 @@ class BasePlugin:
             UpdateDevice(Unit=boilerPressure, nValue=0, sValue=strBoilerPressure)
 
         return
-
+        
     def onMessagetoonTSCinfo(self, Connection, Response):	
         Domoticz.Debug("onMessagetoonTSCinfo called")	
         if 'humidity' in Response:	
@@ -432,7 +428,8 @@ class BasePlugin:
                 return
             if (Connection==self.toonConnSetControl):
                 Domoticz.Log("Something unexpected while onMessage: toonConnSetControl")
-                return	
+                return
+
             if (Connection==self.toonTSCinfo):	
                 Domoticz.Log("Something unexpected while onMessage: toonTSCinfo")
                 return
@@ -464,7 +461,7 @@ class BasePlugin:
 
         if (Connection==self.toonConnZwaveInfo):
             self.onMessageZwaveInfo(Connection, Response)
-	
+
         if (Connection==self.toonTSCinfo):	
             self.onMessagetoonTSCinfo(Connection, Response)
 
@@ -528,7 +525,7 @@ class BasePlugin:
 
         if (self.toonConnZwaveInfo.Connected()==False):
             self.toonConnZwaveInfo.Connect()
-	
+            
         if (self.toonTSCinfo.Connected()==False):	
             self.toonTSCinfo.Connect()
 
