@@ -3,10 +3,10 @@
 # 
 #
 """
-<plugin key="RootedToonPlug" name="Toon Rooted" author="MadPatrick" version="1.4.0" externallink="https://www.domoticz.com/forum/viewtopic.php?f=34&t=34986">
+<plugin key="RootedToonPlug" name="Toon Rooted" author="MadPatrick" version="1.4.1" externallink="https://www.domoticz.com/forum/viewtopic.php?f=34&t=34986">
     <description>
         <br/><h2>Domoticz Toon Rooted plugin</h2><br/>
-        version: 1.4.0
+        version: 1.4.1
         <br/>The configuration contains the following sections:
         <ul style="list-style-type:square">
             <li>Interfacing between Domoticz and a rooted Toon</li>
@@ -61,7 +61,7 @@
 #temporary 2 -> '30'
 programStates = ['10','20','30']
 rProgramStates = ['0','1','2']
-strProgramStates = ['Nee', 'Ja', 'Manual']
+strProgramStates = ['Uit', 'Aan', 'Tijdelijk']
 
 burnerInfos = ['10','20','30']
 rBurnerInfos = ['0','1','2']
@@ -131,7 +131,7 @@ class BasePlugin:
         if setTemp not in Devices:
             Domoticz.Device(Name="Setpunt Temperatuur", Unit=setTemp, Type=242, Subtype=1, Used=1).Create()
         if autoProgram not in Devices:
-            programStateOptions= {"LevelActions": "||", "LevelNames": "|Nee|Ja|Manual", "LevelOffHidden": "true", "SelectorStyle": "0"}
+            programStateOptions= {"LevelActions": "||", "LevelNames": "|Uit|Aan|Tijdelijk", "LevelOffHidden": "true", "SelectorStyle": "0"}
             Domoticz.Device(Name="Auto Program", Unit=autoProgram, Image=15, TypeName="Selector Switch", Options=programStateOptions, Used=1).Create()
         if scene not in Devices:
             programOptions= {"LevelActions": "||||", "LevelNames": "|Weg|Slapen|Thuis|Comfort|Manual", "LevelOffHidden": "true", "SelectorStyle": "0"}
