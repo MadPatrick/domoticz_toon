@@ -30,6 +30,8 @@ The P1 values are predefined for most common Toons
 It is possible that your Toon has different values. 
 You can check this this the JSON link
 
+ http://TOON IP/hdrv_zwave?action=getDevices.json
+
 fill in these numbers in the user defined field
 ### Configuration menu
 ![image](https://user-images.githubusercontent.com/81873830/210851309-c88fa5ff-684c-460d-929e-6c6ab5253c4c.png)
