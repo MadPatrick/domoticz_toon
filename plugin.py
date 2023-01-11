@@ -399,8 +399,9 @@ class BasePlugin:
                     zwaveReceivedLtQ=zwaveDevInfo['CurrentElectricityQuantity']
                     Domoticz.Debug('elec_received_lt: %s, %s' % (zwaveReceivedLtFlow,zwaveReceivedLtQ) )
 
-
         try:
+            if zwaveDeliveredNtFlow == 'NaN': zwaveDeliveredNtFlow = '0'
+            if zwaveDeliveredLtFlow == 'NaN': zwaveDeliveredLtFlow = '0'
             zwaveDeliveredFlow=str(int(float(zwaveDeliveredNtFlow))+int(float(zwaveDeliveredLtFlow)))
             zwaveDeliveredQ=str(int(float(zwaveDeliveredNtQ))+int(float(zwaveDeliveredLtQ)))
         except:
@@ -410,6 +411,8 @@ class BasePlugin:
         Domoticz.Debug("zwaveDelivered: " + zwaveDeliveredFlow+";"+zwaveDeliveredQ)
         UpdateDevice(Unit=electricity, nValue=0, sValue=zwaveDeliveredFlow+";"+zwaveDeliveredQ)
 
+        if zwaveReceivedNtFlow == 'NaN': zwaveReceivedNtFlow = '0'
+        if zwaveReceivedLtFlow == 'NaN': zwaveReceivedLtFlow = '0'
         zwaveReceivedFlow=str(int(float(zwaveReceivedNtFlow))+int(float(zwaveReceivedLtFlow)))
         zwaveReceivedQ=str(int(float(zwaveReceivedNtQ))+int(float(zwaveReceivedLtQ)))
         Domoticz.Debug("zwaveReceived: " + zwaveReceivedFlow+";"+zwaveReceivedQ)
@@ -418,7 +421,6 @@ class BasePlugin:
         UpdateDevice(Unit=p1electricity, nValue=0, sValue=str(int(float(zwaveDeliveredNtQ)))+";"+str(int(float(zwaveDeliveredLtQ)))+";"+str(int(float(zwaveReceivedNtQ)))+";"+str(int(float(zwaveReceivedLtQ)))+";"+zwaveDeliveredFlow+";"+zwaveReceivedFlow)
 
         return
-
 
     def onMessage(self, Connection, Data):
         Domoticz.Debug("onMessage called")
