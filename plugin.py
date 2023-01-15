@@ -546,7 +546,22 @@ class BasePlugin:
         Domoticz.Debug("Notification: " + Name + "," + Subject + "," + Text + "," + Status + "," + str(Priority) + "," + Sound + "," + ImageFile)
 
     def onDisconnect(self, Connection):
-        Domoticz.Debug("onDisconnect called")
+        if (Connection==self.toonConnThermostatInfo):
+            Domoticz.Log("onDisconnect called: ThermostatInfo")
+            return
+        if (Connection==self.toonConnBoilerInfo):
+            Domoticz.Log("onDisconnect called: BoilerInfo")
+            return
+        if (Connection==self.toonConnZwaveInfo):
+            Domoticz.Log("onDisconnect called: toonConnZwaveInfo")
+            return
+        if (Connection==self.toonConnSetControl):
+            Domoticz.Log("onDisconnect called: toonConnSetControl")
+            return
+        if (Connection==self.toonTSCinfo):	
+            Domoticz.Log("onDisconnect called: toonTSCinfo")
+            return
+        Domoticz.Debug("onDisconnect called for other connection (this is rather strange......")
 
     def onHeartbeat(self):
         Domoticz.Debug("onHeartbeat called")
