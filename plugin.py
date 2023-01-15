@@ -6,7 +6,7 @@
 <plugin key="RootedToonPlug" name="Toon Rooted" author="MadPatrick" version="1.4.3" externallink="https://www.domoticz.com/forum/viewtopic.php?f=34&t=34986">
     <description>
         <br/><h2>Domoticz Toon Rooted plugin</h2><br/>
-        version: 1.4.3
+        version: 1.4.4
         <br/>The configuration contains the following sections:
         <ul style="list-style-type:square">
             <li>Interfacing between Domoticz and a rooted Toon</li>
@@ -33,12 +33,12 @@
         <param field="Mode5" label="P1 adresses user defined" width="200px" default="2.1;2.4;2.6;2.5;2.7" >
         <description><br/>Enter user defined P1 adresses separated by ';', example: 2.1;2.4;2.6;2.5;2.7</description>
         </param>
-        <param field="Mode1" label="Temp Away " width="50px" required="true" default="18.0" >
-        <description><br/>==== Scene configuration ====</description>
+        <param field="Mode1" label="Scene temp " width="200px" required="true" default="18.0;17.9;19.5;20.0" >
+        <description><br/>==== Scene configuration (default=18.0;17.9;19.5;20.0) ====</description>
         </param>
-        <param field="Mode2" label="Temp Sleep " width="50px" required="true" default="17.0" />
-        <param field="Mode3" label="Temp Home " width="50px" required="true" default="19.5" />
-        <param field="Mode4" label="Temp Comfort " width="50px" required="true" default="20.0" />
+        <param field="Mode2" label="Heartbeat" width="50px" required="true" default="60" >
+        <description><br/>==== Refresh time  (default=60 sec) ====</description>
+        </param>
     </params>
 </plugin>
 
@@ -175,6 +175,14 @@ class BasePlugin:
         
         self.toonTSCinfo= Domoticz.Connection(Name="Toon Connection", Transport="TCP/IP", Protocol="HTTP", Address=Parameters["Address"], Port=Parameters["Port"])
         
+        
+        sceneList = Parameters["Mode1"].split(';')
+        self.scene1=sceneList[0]
+        self.scene2=sceneList[1]
+        self.scene3=sceneList[2]
+        self.scene4=sceneList[3]  
+        
+        
         #Domoticz.Log(json.dumps(Parameters))
         if Parameters["Mode6"] == "user":
             paramList = Parameters["Mode5"].split(';')
@@ -188,8 +196,11 @@ class BasePlugin:
         self.ia_edlt=paramList[2]
         self.ia_ernt=paramList[3]
         self.ia_erlt=paramList[4]
+        
 
-        heartBeat = 20
+
+
+        heartBeat = int(Parameters['Mode2'])
         Domoticz.Heartbeat(heartBeat)
         return True
 
@@ -307,14 +318,13 @@ class BasePlugin:
             currentSetpoint=float(Response['currentSetpoint'])/100
             strCurrentSetpoint="%.1f" % currentSetpoint
             UpdateDevice(Unit=setTemp, nValue=0, sValue=strCurrentSetpoint)
-            Domoticz.Log("Device Mode Setpoint changed")
-            if strCurrentSetpoint == Parameters["Mode1"]:
+            if strCurrentSetpoint == self.scene1:
                 UpdateDevice(Unit=scene, nValue=0, sValue=programs[3])
-            if strCurrentSetpoint == Parameters["Mode2"]:
+            if strCurrentSetpoint == self.scene2:
                 UpdateDevice(Unit=scene, nValue=0, sValue=programs[2])
-            if strCurrentSetpoint == Parameters["Mode3"]:
-                UpdateDevice(Unit=scene, nValue=0, sValue=programs[1])
-            if strCurrentSetpoint == Parameters["Mode4"]:
+            if strCurrentSetpoint == self.scene3:
+               UpdateDevice(Unit=scene, nValue=0, sValue=programs[1])
+            if strCurrentSetpoint == self.scene4:
                 UpdateDevice(Unit=scene, nValue=0, sValue=programs[0])
 
         if (len(toonInformation)==4):
