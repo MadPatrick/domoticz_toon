@@ -3,10 +3,10 @@
 # 
 #
 """
-<plugin key="RootedToonPlug" name="Toon Rooted" author="MadPatrick" version="1.4.3" externallink="https://www.domoticz.com/forum/viewtopic.php?f=34&t=34986">
+<plugin key="RootedToonPlug" name="Toon Rooted" author="MadPatrick" version="1.4.6" externallink="https://www.domoticz.com/forum/viewtopic.php?f=34&t=34986">
     <description>
         <br/><h2>Domoticz Toon Rooted plugin</h2><br/>
-        version: 1.4.5
+        version: 1.4.6
         <br/>The configuration contains the following sections:
         <ul style="list-style-type:square">
             <li>Interfacing between Domoticz and a rooted Toon</li>
@@ -36,8 +36,14 @@
         <param field="Mode1" label="Scene temp " width="200px" required="true" default="18.0;17.9;19.5;20.0" >
         <description><br/>==== Scene configuration (default=18.0;17.9;19.5;20.0) ====</description>
         </param>
-        <param field="Mode2" label="Heartbeat" width="50px" required="true" default="60" >
-        <description><br/>==== Refresh time  (default=60 sec) ====</description>
+        <param field="Mode2" label="Refresh interval" width="100px">
+            <options>
+                <option label="20s" value="20"/>
+                <option label="1m" value="60"/ default="true">
+                <option label="5m" value="300"/>
+                <option label="10m" value="600"/>
+                <option label="15m" value="900"/>
+            </options>
         </param>
         <param field = "Mode3" label="P1 data" width="100px">
             <description>Enable the P1 data</description>
@@ -189,7 +195,6 @@ class BasePlugin:
         self.scene3=sceneList[2]
         self.scene4=sceneList[3]  
         
-        
         #Domoticz.Log(json.dumps(Parameters))
         if Parameters["Mode6"] == "user":
             paramList = Parameters["Mode5"].split(';')
@@ -204,9 +209,6 @@ class BasePlugin:
         self.ia_ernt=paramList[3]
         self.ia_erlt=paramList[4]
         
-
-
-
         heartBeat = int(Parameters['Mode2'])
         Domoticz.Heartbeat(heartBeat)
         return True
