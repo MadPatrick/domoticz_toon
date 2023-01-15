@@ -3,10 +3,10 @@
 # 
 #
 """
-<plugin key="RootedToonPlug" name="Toon Rooted" author="MadPatrick" version="1.4.6" externallink="https://www.domoticz.com/forum/viewtopic.php?f=34&t=34986">
+<plugin key="RootedToonPlug" name="Toon Rooted" author="MadPatrick" version="1.4.7" externallink="https://www.domoticz.com/forum/viewtopic.php?f=34&t=34986">
     <description>
         <br/><h2>Domoticz Toon Rooted plugin</h2><br/>
-        version: 1.4.6
+        version: 1.4.7
         <br/>The configuration contains the following sections:
         <ul style="list-style-type:square">
             <li>Interfacing between Domoticz and a rooted Toon</li>
@@ -494,6 +494,10 @@ class BasePlugin:
 
         if (Connection==self.toonTSCinfo):	
             self.onMessagetoonTSCinfo(Connection, Response)
+
+        if Connection.Connected() == True:
+            # try to disconnect after use to avoid overload on the Toon
+            Connection.Disconnect()
 
         return
 
