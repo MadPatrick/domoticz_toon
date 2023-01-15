@@ -6,7 +6,7 @@
 <plugin key="RootedToonPlug" name="Toon Rooted" author="MadPatrick" version="1.4.3" externallink="https://www.domoticz.com/forum/viewtopic.php?f=34&t=34986">
     <description>
         <br/><h2>Domoticz Toon Rooted plugin</h2><br/>
-        version: 1.4.4
+        version: 1.4.5
         <br/>The configuration contains the following sections:
         <ul style="list-style-type:square">
             <li>Interfacing between Domoticz and a rooted Toon</li>
@@ -38,6 +38,13 @@
         </param>
         <param field="Mode2" label="Heartbeat" width="50px" required="true" default="60" >
         <description><br/>==== Refresh time  (default=60 sec) ====</description>
+        </param>
+        <param field = "Mode3" label="P1 data" width="100px">
+            <description>Enable the P1 data</description>
+            <options>
+                <option label="Yes" value="Yes"/>
+                <option label="No" value="No" default="true"/>
+            </options>
         </param>
     </params>
 </plugin>
@@ -141,14 +148,6 @@ class BasePlugin:
             Domoticz.Device(Name="Keteldruk", Unit=boilerPressure, TypeName="Pressure", Used=1).Create()
         if programInfo not in Devices:
             Domoticz.Device(Name="Programma info", Unit=programInfo, TypeName="Text", Used=1).Create()
-        if gas not in Devices:
-            Domoticz.Device(Name="Gas", Unit=gas, TypeName="Gas", Used=1).Create()
-        if electricity not in Devices:
-            Domoticz.Device(Name="Electriciteit", Unit=electricity, TypeName="kWh", Used=1).Create()
-        if genElectricity not in Devices:
-            Domoticz.Device(Name="Opgewekte Electriciteit", Unit=genElectricity, TypeName="Usage", Used=1).Create()
-        if p1electricity not in Devices:
-            Domoticz.Device(Name="P1 Electriciteit", Unit=p1electricity, Type=250, Subtype=1, Used=1).Create()
         if boilerState not in Devices:
             burnerInfoOptions= {"LevelActions": "||", "LevelNames": "|Uit|CV|WW", "LevelOffHidden": "true", "SelectorStyle": "0"}
             Domoticz.Device(Name="Ketelmode", Unit=boilerState, Image=15, TypeName="Selector Switch", Options=burnerInfoOptions, Used=1).Create()
@@ -158,6 +157,14 @@ class BasePlugin:
             Domoticz.Device(Name="Ketel setpoint", Unit=boilerSetPoint, Type=80, Subtype=5, Used=1).Create()
         if RoomHumidity not in Devices:	
             Domoticz.Device(Name="Luchtvochtigheid", Unit=RoomHumidity, Type=81, Subtype=1, Used=1).Create()
+        if gas not in Devices:
+            Domoticz.Device(Name="Gas", Unit=gas, TypeName="Gas", Used=1).Create()
+        if electricity not in Devices:
+            Domoticz.Device(Name="Electriciteit", Unit=electricity, TypeName="kWh", Used=1).Create()
+        if genElectricity not in Devices:
+            Domoticz.Device(Name="Opgewekte Electriciteit", Unit=genElectricity, TypeName="Usage", Used=1).Create()
+        if p1electricity not in Devices:
+            Domoticz.Device(Name="P1 Electriciteit", Unit=p1electricity, Type=250, Subtype=1, Used=1).Create()
 
         Domoticz.Debugging(2)
         DumpConfigToLog()
