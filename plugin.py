@@ -39,7 +39,7 @@
         <param field="Mode2" label="Refresh interval" width="100px">
             <options>
                 <option label="20s" value="20"/>
-                <option label="1m" value="60"/ default="true">
+                <option label="1m" value="60" default="true"/>
                 <option label="5m" value="300"/>
                 <option label="10m" value="600"/>
                 <option label="15m" value="900"/>
