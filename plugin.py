@@ -303,8 +303,9 @@ class BasePlugin:
             UpdateDevice(Unit=boilerState, nValue=0, sValue=burnerInfos[burnerInfo])
 	
         if 'currentModulationLevel' in Response:
-            currentModulationLevel=int(Response['currentModulationLevel'])	
-            UpdateDevice(Unit=boilerModulation, nValue=0, sValue=currentModulationLevel)
+            currentModulationLevel=int(Response['currentModulationLevel'])
+            strcurrentModulationLevel="%.0f" % currentModulationLevel
+            UpdateDevice(Unit=boilerModulation, nValue=0, sValue=strcurrentModulationLevel)
 
         if 'nextTime' in Response:
             toonInformation['nextTime']=Response['nextTime']
