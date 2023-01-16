@@ -33,8 +33,8 @@
         <param field="Mode5" label="P1 adresses user defined" width="200px" default="2.1;2.4;2.6;2.5;2.7" >
         <description><br/>Enter user defined P1 adresses separated by ';', example: 2.1;2.4;2.6;2.5;2.7</description>
         </param>
-        <param field="Mode1" label="Scene temp " width="200px" required="true" default="18.0;17.9;19.5;20.0" >
-        <description><br/>==== Scene configuration (default=18.0;17.9;19.5;20.0) ====</description>
+        <param field="Mode1" label="Scene temp " width="200px" required="true" default="18.0;17.0;19.5;20.0" >
+        <description><br/>==== Scene configuration (default=18.0;17.0;19.5;20.0) ====</description>
         </param>
         <param field="Mode2" label="Refresh interval" width="100px">
             <options>
