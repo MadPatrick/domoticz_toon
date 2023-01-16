@@ -151,26 +151,26 @@ class BasePlugin:
             programOptions= {"LevelActions": "||||", "LevelNames": "|Weg|Slapen|Thuis|Comfort|Manual", "LevelOffHidden": "true", "SelectorStyle": "0"}
             Domoticz.Device(Name="Scene", Unit=scene, Image=15, TypeName="Selector Switch", Options=programOptions, Used=1).Create()
         if boilerPressure not in Devices:
-            Domoticz.Device(Name="Keteldruk", Unit=boilerPressure, TypeName="Pressure", Used=1).Create()
+            Domoticz.Device(Name="Keteldruk", Unit=boilerPressure, TypeName="Pressure", Used=0).Create()
         if programInfo not in Devices:
-            Domoticz.Device(Name="Programma info", Unit=programInfo, TypeName="Text", Used=1).Create()
+            Domoticz.Device(Name="Programma info", Unit=programInfo, TypeName="Text", Used=0).Create()
         if boilerState not in Devices:
             burnerInfoOptions= {"LevelActions": "||", "LevelNames": "|Uit|CV|WW", "LevelOffHidden": "true", "SelectorStyle": "0"}
-            Domoticz.Device(Name="Ketelmode", Unit=boilerState, Image=15, TypeName="Selector Switch", Options=burnerInfoOptions, Used=1).Create()
+            Domoticz.Device(Name="Ketelmode", Unit=boilerState, Image=15, TypeName="Selector Switch", Options=burnerInfoOptions, Used=0).Create()
         if boilerModulation not in Devices:	
-            Domoticz.Device(Name="Ketel modulatie", Unit=boilerModulation, Type=243, Subtype=6, Used=1).Create()
+            Domoticz.Device(Name="Ketel modulatie", Unit=boilerModulation, Type=243, Subtype=6, Used=0).Create()
         if boilerSetPoint not in Devices:	
-            Domoticz.Device(Name="Ketel setpoint", Unit=boilerSetPoint, Type=80, Subtype=5, Used=1).Create()
+            Domoticz.Device(Name="Ketel setpoint", Unit=boilerSetPoint, Type=80, Subtype=5, Used=0).Create()
         if RoomHumidity not in Devices:	
-            Domoticz.Device(Name="Luchtvochtigheid", Unit=RoomHumidity, Type=81, Subtype=1, Used=1).Create()
+            Domoticz.Device(Name="Luchtvochtigheid", Unit=RoomHumidity, Type=81, Subtype=1, Used=0).Create()
         if gas not in Devices:
-            Domoticz.Device(Name="Gas", Unit=gas, TypeName="Gas", Used=1).Create()
+            Domoticz.Device(Name="Gas", Unit=gas, TypeName="Gas", Used=0).Create()
         if electricity not in Devices:
-            Domoticz.Device(Name="Electriciteit", Unit=electricity, TypeName="kWh", Used=1).Create()
+            Domoticz.Device(Name="Electriciteit", Unit=electricity, TypeName="kWh", Used=0).Create()
         if genElectricity not in Devices:
-            Domoticz.Device(Name="Opgewekte Electriciteit", Unit=genElectricity, TypeName="Usage", Used=1).Create()
+            Domoticz.Device(Name="Opgewekte Electriciteit", Unit=genElectricity, TypeName="Usage", Used=0).Create()
         if p1electricity not in Devices:
-            Domoticz.Device(Name="P1 Electriciteit", Unit=p1electricity, Type=250, Subtype=1, Used=1).Create()
+            Domoticz.Device(Name="P1 Electriciteit", Unit=p1electricity, Type=250, Subtype=1, Used=0).Create()
 
         Domoticz.Debugging(2)
         DumpConfigToLog()
@@ -329,12 +329,20 @@ class BasePlugin:
             UpdateDevice(Unit=setTemp, nValue=0, sValue=strCurrentSetpoint)
             if strCurrentSetpoint == self.scene1:
                 UpdateDevice(Unit=scene, nValue=0, sValue=programs[3])
+                self.toonSetControlUrl="/happ_thermstat?action=changeSchemeState&state=2&temperatureState=3"
+                self.toonConnSetControl.Connect()
             if strCurrentSetpoint == self.scene2:
                 UpdateDevice(Unit=scene, nValue=0, sValue=programs[2])
+                self.toonSetControlUrl="/happ_thermstat?action=changeSchemeState&state=2&temperatureState=2"
+                self.toonConnSetControl.Connect()
             if strCurrentSetpoint == self.scene3:
-               UpdateDevice(Unit=scene, nValue=0, sValue=programs[1])
+                UpdateDevice(Unit=scene, nValue=0, sValue=programs[1])
+                self.toonSetControlUrl="/happ_thermstat?action=changeSchemeState&state=2&temperatureState=1"
+                self.toonConnSetControl.Connect()
             if strCurrentSetpoint == self.scene4:
                 UpdateDevice(Unit=scene, nValue=0, sValue=programs[0])
+                self.toonSetControlUrl="/happ_thermstat?action=changeSchemeState&state=2&temperatureState=0"
+                self.toonConnSetControl.Connect()
 
         if (len(toonInformation)==4):
             strToonInformation='No information received from Toon yet (%s)' % toonInformation['nextProgram']
