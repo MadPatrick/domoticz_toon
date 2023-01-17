@@ -3,10 +3,10 @@
 # 
 #
 """
-<plugin key="RootedToonPlug" name="Toon Rooted" author="MadPatrick" version="1.4.8" externallink="https://www.domoticz.com/forum/viewtopic.php?f=34&t=34986">
+<plugin key="RootedToonPlug" name="Toon Rooted" author="MadPatrick" version="1.4.9" externallink="https://www.domoticz.com/forum/viewtopic.php?f=34&t=34986">
     <description>
         <br/><h2>Domoticz Toon Rooted plugin</h2><br/>
-        version: 1.4.8
+        version: 1.4.
         <br/>The configuration contains the following sections:
         <ul style="list-style-type:square">
             <li>Interfacing between Domoticz and a rooted Toon</li>
@@ -50,6 +50,12 @@
             <options>
                 <option label="Yes" value="Yes"/>
                 <option label="No" value="No" default="true"/>
+            </options>
+        </param>
+        <param field = "Mode4" label="Debug logging" width="100px">
+            <options>
+                <option label="True" value="Debug"/>
+                <option label="False" value="Normal" default="true" />
             </options>
         </param>
     </params>
@@ -172,8 +178,9 @@ class BasePlugin:
         if p1electricity not in Devices:
             Domoticz.Device(Name="P1 Electriciteit", Unit=p1electricity, Type=250, Subtype=1, Used=0).Create()
 
-        Domoticz.Debugging(2)
-        DumpConfigToLog()
+        if Parameters["Mode4"] == "Debug":
+            Domoticz.Debugging(2)
+            DumpConfigToLog()
 
         self.toonConnThermostatInfo = Domoticz.Connection(Name="Toon Connection", Transport="TCP/IP", Protocol="HTTP", Address=Parameters["Address"], Port=Parameters["Port"])
         self.toonConnThermostatInfo.Connect()
@@ -402,9 +409,9 @@ class BasePlugin:
             zwaveDevInfo=Response[zwaveDev]
 
             if 'type' in zwaveDevInfo:
+                Domoticz.Debug("Zwave message: "+ str(zwaveDevInfo))
                 if (zwaveDevInfo['internalAddress']==self.ia_gas):
-                    Domoticz.Debug("Zwave Gas usage: "+ zwaveDevInfo['CurrentGasFlow'])
-                    Domoticz.Debug("Zwave Gas counter: "+ zwaveDevInfo['CurrentGasQuantity'])
+                    Domoticz.Debug("Zwave Gas usage: "+ zwaveDevInfo['CurrentGasFlow'] + " Gas counter: "+ zwaveDevInfo['CurrentGasQuantity'])
                     UpdateDevice(Unit=gas, nValue=0, sValue="%.0f" % (float(zwaveDevInfo['CurrentGasQuantity']) ))
 
                 if (zwaveDevInfo['internalAddress']==self.ia_ednt):
