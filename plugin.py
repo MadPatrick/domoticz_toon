@@ -3,10 +3,10 @@
 # 
 #
 """
-<plugin key="RootedToonPlug" name="Toon Rooted" author="MadPatrick" version="1.4.10" externallink="https://www.domoticz.com/forum/viewtopic.php?f=34&t=34986">
+<plugin key="RootedToonPlug" name="Toon Rooted" author="MadPatrick" version="1.4.11" externallink="https://www.domoticz.com/forum/viewtopic.php?f=34&t=34986">
     <description>
         <br/><h2>Domoticz Toon Rooted plugin</h2><br/>
-        version: 1.4.10
+        version: 1.4.11
         <br/>The configuration contains the following sections:
         <ul style="list-style-type:square">
             <li>Interfacing between Domoticz and a rooted Toon</li>
@@ -146,6 +146,9 @@ class BasePlugin:
     def onStart(self):
         Domoticz.Log("onStart called")
 
+        if Parameters["Mode3"] == "Yes":
+            self.useZwave = True
+
         if curTemp not in Devices:
             Domoticz.Device(Name="Temperatuur", Unit=curTemp, TypeName="Temperature", Used=1).Create()
         if setTemp not in Devices:
@@ -169,21 +172,20 @@ class BasePlugin:
             Domoticz.Device(Name="Ketel setpoint", Unit=boilerSetPoint, Type=80, Subtype=5, Used=0).Create()
         if RoomHumidity not in Devices:	
             Domoticz.Device(Name="Luchtvochtigheid", Unit=RoomHumidity, Type=81, Subtype=1, Used=0).Create()
-        if gas not in Devices:
-            Domoticz.Device(Name="Gas", Unit=gas, TypeName="Gas", Used=0).Create()
-        if electricity not in Devices:
-            Domoticz.Device(Name="Electriciteit", Unit=electricity, TypeName="kWh", Used=0).Create()
-        if genElectricity not in Devices:
-            Domoticz.Device(Name="Opgewekte Electriciteit", Unit=genElectricity, TypeName="Usage", Used=0).Create()
-        if p1electricity not in Devices:
-            Domoticz.Device(Name="P1 Electriciteit", Unit=p1electricity, Type=250, Subtype=1, Used=0).Create()
+
+        if self.useZwave:
+            if gas not in Devices:
+                Domoticz.Device(Name="Gas", Unit=gas, TypeName="Gas", Used=0).Create()
+            if electricity not in Devices:
+                Domoticz.Device(Name="Electriciteit", Unit=electricity, TypeName="kWh", Used=0).Create()
+            if genElectricity not in Devices:
+                Domoticz.Device(Name="Opgewekte Electriciteit", Unit=genElectricity, TypeName="Usage", Used=0).Create()
+            if p1electricity not in Devices:
+                Domoticz.Device(Name="P1 Electriciteit", Unit=p1electricity, Type=250, Subtype=1, Used=0).Create()
 
         if Parameters["Mode4"] == "Debug":
             Domoticz.Debugging(2)
             DumpConfigToLog()
-
-        if Parameters["Mode3"] == "Yes":
-            self.useZwave = True
 
         self.toonConnThermostatInfo = Domoticz.Connection(Name="Toon Connection", Transport="TCP/IP", Protocol="HTTP", Address=Parameters["Address"], Port=Parameters["Port"])
         self.toonConnThermostatInfo.Connect()
