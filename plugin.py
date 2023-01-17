@@ -3,10 +3,10 @@
 # 
 #
 """
-<plugin key="RootedToonPlug" name="Toon Rooted" author="MadPatrick" version="1.4.9" externallink="https://www.domoticz.com/forum/viewtopic.php?f=34&t=34986">
+<plugin key="RootedToonPlug" name="Toon Rooted" author="MadPatrick" version="1.4.10" externallink="https://www.domoticz.com/forum/viewtopic.php?f=34&t=34986">
     <description>
         <br/><h2>Domoticz Toon Rooted plugin</h2><br/>
-        version: 1.4.
+        version: 1.4.10
         <br/>The configuration contains the following sections:
         <ul style="list-style-type:square">
             <li>Interfacing between Domoticz and a rooted Toon</li>
@@ -129,6 +129,7 @@ class BasePlugin:
     toonConnSetControl=None
     toonConnZwaveInfo=None
     toonSetControlUrl=""
+    useZwave = False
 
     ia_gas=''
     ia_ednt=''
@@ -138,7 +139,6 @@ class BasePlugin:
 
     strToonInformation='Waiting for first communication with Toon'
 
-    enabled = False
     def __init__(self):
         #self.var = 123
         return
@@ -182,14 +182,18 @@ class BasePlugin:
             Domoticz.Debugging(2)
             DumpConfigToLog()
 
+        if Parameters["Mode3"] == "Yes":
+            self.useZwave = True
+
         self.toonConnThermostatInfo = Domoticz.Connection(Name="Toon Connection", Transport="TCP/IP", Protocol="HTTP", Address=Parameters["Address"], Port=Parameters["Port"])
         self.toonConnThermostatInfo.Connect()
 
         self.toonConnBoilerInfo = Domoticz.Connection(Name="Toon Connection", Transport="TCP/IP", Protocol="HTTP", Address=Parameters["Address"], Port=Parameters["Port"])
         self.toonConnBoilerInfo.Connect()
 
-        self.toonConnZwaveInfo = Domoticz.Connection(Name="Toon Connection", Transport="TCP/IP", Protocol="HTTP", Address=Parameters["Address"], Port=Parameters["Port"])
-        self.toonConnZwaveInfo.Connect()
+        if self.useZwave:
+            self.toonConnZwaveInfo = Domoticz.Connection(Name="Toon Connection", Transport="TCP/IP", Protocol="HTTP", Address=Parameters["Address"], Port=Parameters["Port"])
+            self.toonConnZwaveInfo.Connect()
 
         self.toonConnSetControl= Domoticz.Connection(Name="Toon Connection", Transport="TCP/IP", Protocol="HTTP", Address=Parameters["Address"], Port=Parameters["Port"])
         
@@ -203,18 +207,19 @@ class BasePlugin:
         self.scene4=sceneList[3]  
         
         #Domoticz.Log(json.dumps(Parameters))
-        if Parameters["Mode6"] == "user":
-            paramList = Parameters["Mode5"].split(';')
-            if len(paramList) != 5:
-                Domoticz.Error("Invalid list of user defined, please provide exactly 5 adresses, separated by semi colon ';'")
-                return
-        else:
-            paramList = zwaveAdress[Parameters["Mode6"]]
-        self.ia_gas=paramList[0]
-        self.ia_ednt=paramList[1]
-        self.ia_edlt=paramList[2]
-        self.ia_ernt=paramList[3]
-        self.ia_erlt=paramList[4]
+        if self.useZwave:
+            if Parameters["Mode6"] == "user":
+                paramList = Parameters["Mode5"].split(';')
+                if len(paramList) != 5:
+                    Domoticz.Error("Invalid list of user defined, please provide exactly 5 adresses, separated by semi colon ';'")
+                    return
+            else:
+                paramList = zwaveAdress[Parameters["Mode6"]]
+            self.ia_gas=paramList[0]
+            self.ia_ednt=paramList[1]
+            self.ia_edlt=paramList[2]
+            self.ia_ernt=paramList[3]
+            self.ia_erlt=paramList[4]
         
         heartBeat = int(Parameters['Mode2'])
         Domoticz.Heartbeat(heartBeat)
@@ -588,7 +593,7 @@ class BasePlugin:
         if (self.toonConnBoilerInfo.Connected()==False):
             self.toonConnBoilerInfo.Connect()
 
-        if (self.toonConnZwaveInfo.Connected()==False):
+        if (self.toonConnZwaveInfo.Connected()==False and self.useZwave):
             self.toonConnZwaveInfo.Connect()
             
         if (self.toonTSCinfo.Connected()==False):	
@@ -603,7 +608,6 @@ class BasePlugin:
             connection.Connect()
         connection.Send({"Verb":"GET", "URL":requestUrl, "Headers": self.headers})
         return
-
 
 global _plugin
 _plugin = BasePlugin()
