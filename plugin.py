@@ -3,10 +3,10 @@
 # 
 #
 """
-<plugin key="RootedToonPlug" name="Toon Rooted" author="MadPatrick" version="1.4.11" externallink="https://www.domoticz.com/forum/viewtopic.php?f=34&t=34986">
+<plugin key="RootedToonPlug" name="Toon Rooted" author="MadPatrick" version="1.4.12" externallink="https://www.domoticz.com/forum/viewtopic.php?f=34&t=34986">
     <description>
         <br/><h2>Domoticz Toon Rooted plugin</h2><br/>
-        version: 1.4.11
+        version: 1.4.12
         <br/>The configuration contains the following sections:
         <ul style="list-style-type:square">
             <li>Interfacing between Domoticz and a rooted Toon</li>
@@ -595,8 +595,9 @@ class BasePlugin:
         if (self.toonConnBoilerInfo.Connected()==False):
             self.toonConnBoilerInfo.Connect()
 
-        if (self.toonConnZwaveInfo.Connected()==False and self.useZwave):
-            self.toonConnZwaveInfo.Connect()
+        if self.useZwave:
+            if (self.toonConnZwaveInfo.Connected()==False and ):
+                self.toonConnZwaveInfo.Connect()
             
         if (self.toonTSCinfo.Connected()==False):	
             self.toonTSCinfo.Connect()
