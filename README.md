@@ -32,8 +32,8 @@ You can check this this the JSON link
 
 http://TOON_IP/hdrv_zwave?action=getDevices.json
  
-Unforunately there is not proper information in the JSON out to define which number is corresponding which which device
-Also the is a variety of numners among different Toon's, Like dev_2.x or dev_3.x...... 
+Unfortunately, there is no good information in the JSON to determine which number belongs to which device.
+Also, there is a variety of numbers between different Toon's, Like dev_2.x or dev_3.x...... 
 
 For example:
 
