@@ -37,9 +37,7 @@ Also, there is a variety of numbers between different Toon's, Like dev_2.x or de
 
 For example:
 
-![image](https://user-images.githubusercontent.com/81873830/213293139-d16d9b03-c5a0-42b1-aec7-0e523836afeb.png)
-
-
+![image](https://user-images.githubusercontent.com/81873830/214091415-6063c7d8-8e4b-46f3-b1e6-c2dfb01d9e1e.png)
 
 fill in these numbers in the user defined field
 ### Configuration menu
