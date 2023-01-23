@@ -36,12 +36,11 @@ Unfortunately, there is no good information in the JSON to determine which numbe
 Also, there is a variety of numbers between different Toon's, Like dev_2.x or dev_3.x...... 
 
 For example:
-
-![image](https://user-images.githubusercontent.com/81873830/214091415-6063c7d8-8e4b-46f3-b1e6-c2dfb01d9e1e.png)
+![image](https://user-images.githubusercontent.com/81873830/214092186-e73b1482-96ec-4488-b056-1754836a0d1b.png)
 
 fill in these numbers in the user defined field
 ### Configuration menu
-![image](https://user-images.githubusercontent.com/81873830/210851309-c88fa5ff-684c-460d-929e-6c6ab5253c4c.png)
+![image](https://user-images.githubusercontent.com/81873830/214091415-6063c7d8-8e4b-46f3-b1e6-c2dfb01d9e1e.png)
 
 ### installed devices
 ![image](https://user-images.githubusercontent.com/81873830/210851429-d6085416-cc71-4519-8603-94d8226793e3.png)
