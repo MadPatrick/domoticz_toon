@@ -229,9 +229,9 @@ class BasePlugin:
         heartBeat = int(Parameters['Mode2'])
         Domoticz.Heartbeat(heartBeat)
 
+        return True
         #fetch scenes config
         self.getScenesConfig(self.toonConnThermostatInfo)
-        return True
 
     def onStop(self):
         Domoticz.Debug("onStop called")
