@@ -3,10 +3,10 @@
 # 
 #
 """
-<plugin key="RootedToonPlug" name="Toon Rooted" author="MadPatrick" version="1.4.13" externallink="https://www.domoticz.com/forum/viewtopic.php?f=34&t=34986">
+<plugin key="RootedToonPlug" name="Toon Rooted" author="MadPatrick" version="1.4.14" externallink="https://www.domoticz.com/forum/viewtopic.php?f=34&t=34986">
     <description>
         <br/><h2>Domoticz Toon Rooted plugin</h2><br/>
-        version: 1.4.13
+        version: 1.4.14
         <br/>The configuration contains the following sections:
         <ul style="list-style-type:square">
             <li>Interfacing between Domoticz and a rooted Toon</li>
@@ -204,12 +204,12 @@ class BasePlugin:
         
         self.toonTSCinfo= Domoticz.Connection(Name="Toon Connection", Transport="TCP/IP", Protocol="HTTP", Address=Parameters["Address"], Port=Parameters["Port"])
         
-        
         sceneList = Parameters["Mode1"].split(';')
         self.scene1=sceneList[0]
         self.scene2=sceneList[1]
         self.scene3=sceneList[2]
         self.scene4=sceneList[3]  
+        self.scenes = []
         
         #Domoticz.Log(json.dumps(Parameters))
         if self.useZwave:
@@ -228,10 +228,10 @@ class BasePlugin:
         
         heartBeat = int(Parameters['Mode2'])
         Domoticz.Heartbeat(heartBeat)
-        return True
 
         #fetch scenes config
         self.getScenesConfig(self.toonConnThermostatInfo)
+        return True
 
     def onStop(self):
         Domoticz.Debug("onStop called")
@@ -274,11 +274,15 @@ class BasePlugin:
         return True
 
     def onMessageThermostatInfo(self, Connection, Response):
-        Domoticz.Debug("onMessageThermostatInfo called")
+        Domoticz.Debug("onMessageThermostatInfo called with response: '" + str(Response) +"'")
         result='error'
         if 'result' in Response:
             result=Response['result']
-
+        elif 'states' in Response:
+            #this message contains the scenes
+            Domoticz.Debug("onMessageThermostatInfo processing list of scenes")
+            for state in Response['states']['state']:
+                self.scenes[state['id'][0]] = int(state['tempValue'][0])
         Domoticz.Debug("Toon getThermostatInfo command executed with status: " + result)
         if result!='ok':
             return
@@ -609,10 +613,17 @@ class BasePlugin:
         Domoticz.Debug("processing scenes config on data: "+str(json_response))
 
     def getScenesConfig(self, connection):
+        Domoticz.Debug("start to get scenes")
         requestUrl = "/hcb_config?action=getObjectConfigTree&package=happ_thermstat&internalAddress=thermostatStates"
+        headers = { 'Content-Type': 'text/xml; charset=utf-8', \
+                      'Connection': 'keep-alive', \
+                      'Accept': 'Content-Type: text/html; charset=UTF-8', \
+                      'Host': Parameters["Address"], \
+                      'User-Agent':'Domoticz/1.0' }
+        
         if connection.Connected() == False:
             connection.Connect()
-        connection.Send({"Verb":"GET", "URL":requestUrl, "Headers": self.headers})
+        connection.Send({"Verb":"GET", "URL":requestUrl, "Headers": headers})
         return
 
 global _plugin
