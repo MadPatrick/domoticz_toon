@@ -3,7 +3,7 @@
 # 
 #
 """
-<plugin key="RootedToonPlug" name="Toon Rooted" author="MadPatrick" version="1.4.14" externallink="https://www.domoticz.com/forum/viewtopic.php?f=34&t=34986">
+<plugin key="RootedToonPlug" name="Toon Rooted" author="MadPatrick" version="1.4.15" externallink="https://www.domoticz.com/forum/viewtopic.php?f=34&t=34986">
     <description>
         <br/><h2>Domoticz Toon Rooted plugin</h2><br/>
         version: 1.4.15
@@ -440,6 +440,9 @@ class BasePlugin:
 
         return
 
+    def onMessagetoonSceneinfo(self, Connection, Response):	
+        Domoticz.Debug("onMessagetoonSceneinfo called")
+
     def onMessageZwaveInfo(self, Connection, Response):
         Domoticz.Debug("onMessageZwaveInfo called")
         zwaveDeliveredLtFlow='0'
@@ -525,7 +528,7 @@ class BasePlugin:
             if (Connection==self.toonTSCinfo):	
                 Domoticz.Log("Something unexpected while onMessage: toonTSCinfo")
                 return
-            if (Connection==self.toonSceneinfo):	
+            if (Connection==self.toonSceneinfo):
                 Domoticz.Log("Something unexpected while onMessage: toonSceneinfo")
                 return
 
@@ -560,6 +563,9 @@ class BasePlugin:
         if (Connection==self.toonTSCinfo):	
             self.onMessagetoonTSCinfo(Connection, Response)
             
+        if (Connection==self.toonSceneinfo):
+            self.onMessagetoonSceneinfo(Connection, Response)
+
         if Connection.Connected() == True:
             # try to disconnect after use to avoid overload on the Toon
             Connection.Disconnect()
@@ -627,7 +633,6 @@ class BasePlugin:
             Domoticz.Log("onDisconnect called: toonTSCinfo")
             return
         if (Connection==self.toonSceneinfo):
-        
             Domoticz.Log("onDisconnect called: toonSceneinfo")
             return
         Domoticz.Debug("onDisconnect called for other connection (this is rather strange......")
@@ -648,7 +653,7 @@ class BasePlugin:
         if (self.toonTSCinfo.Connected()==False):	
             self.toonTSCinfo.Connect()
 
-        if (self.toonSceneinfo.Connected()==False):	
+        if (self.toonSceneinfo.Connected()==False):
             self.toonSceneinfo.Connect()
 
     def processScenesConfig(self, json_response):
