@@ -3,10 +3,10 @@
 # 
 #
 """
-<plugin key="RootedToonPlug" name="Toon Rooted" author="MadPatrick" version="1.4.15" externallink="https://www.domoticz.com/forum/viewtopic.php?f=34&t=34986">
+<plugin key="RootedToonPlug" name="Toon Rooted" author="MadPatrick" version="1.4.16" externallink="https://www.domoticz.com/forum/viewtopic.php?f=34&t=34986">
     <description>
         <br/><h2>Domoticz Toon Rooted plugin</h2><br/>
-        version: 1.4.15
+        version: 1.4.16
         <br/>The configuration contains the following sections:
         <ul style="list-style-type:square">
             <li>Interfacing between Domoticz and a rooted Toon</li>
@@ -247,7 +247,7 @@ class BasePlugin:
 
         return True
         #fetch scenes config
-        self.getScenesConfig(self.toonConnThermostatInfo)
+        self.getScenesConfig(self.toonSceneinfo)
 
     def onStop(self):
         Domoticz.Debug("onStop called")
@@ -297,11 +297,6 @@ class BasePlugin:
         result='error'
         if 'result' in Response:
             result=Response['result']
-        elif 'states' in Response:
-            #this message contains the scenes
-            Domoticz.Debug("onMessageThermostatInfo processing list of scenes")
-            for state in Response['states']['state']:
-                self.scenes[state['id'][0]] = int(state['tempValue'][0])
         Domoticz.Debug("Toon getThermostatInfo command executed with status: " + result)
         if result!='ok':
             return
@@ -429,19 +424,26 @@ class BasePlugin:
             UpdateDevice(Unit=RoomHumidity, nValue=0, sValue=strtemperature+";"+strhumidity+";"+strhumstat)
             #UpdateDevice(Unit=RoomHumidity, nValue=47, sValue=1)
             
-#TVOC: total volatile compounds (how bad is the air in your house poluted with other gases)
-#ECO2: equivalent CO2 
-#intensity: the light intensity of the surrounding of the toon
-### HUMSTAT            
-#0=Normal
-#1=Comfortable
-#2=Dry
-#3=Wet
+            #TVOC: total volatile compounds (how bad is the air in your house poluted with other gases)
+            #ECO2: equivalent CO2 
+            #intensity: the light intensity of the surrounding of the toon
+            ### HUMSTAT            
+            #0=Normal
+            #1=Comfortable
+            #2=Dry
+            #3=Wet
 
         return
 
     def onMessagetoonSceneinfo(self, Connection, Response):	
         Domoticz.Debug("onMessagetoonSceneinfo called")
+        if 'states' in Response:
+            #this message contains the scenes
+            Domoticz.Debug("onMessagetoonSceneinfo processing list of scenes")
+            for state in Response['states']['state']:
+                self.scenes[state['id'][0]] = int(state['tempValue'][0])
+        else:
+            Domoticz.Debug("message does not contain states info: "+str(Response))
 
     def onMessageZwaveInfo(self, Connection, Response):
         Domoticz.Debug("onMessageZwaveInfo called")
