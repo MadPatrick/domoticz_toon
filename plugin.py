@@ -3,10 +3,10 @@
 # 
 #
 """
-<plugin key="RootedToonPlug" name="Toon Rooted" author="MadPatrick" version="1.4.16" externallink="https://www.domoticz.com/forum/viewtopic.php?t=34986&hilit=toon">
+<plugin key="RootedToonPlug" name="Toon Rooted" author="MadPatrick" version="1.4.15" externallink="https://github.com/MadPatrick/domoticz_toon">
     <description>
         <br/><h2>Domoticz Toon Rooted plugin</h2><br/>
-        version: 1.4.16
+        version: 1.4.15
         <br/>The configuration contains the following sections:
         <ul style="list-style-type:square">
             <li>Interfacing between Domoticz and a rooted Toon</li>
@@ -31,12 +31,11 @@
         </param>
         <param field="Port" label="Port" width="50px" required="true" default="80" >
         </param>
-        <param field="Port" label="Port" width="50px" required="true" default="80" />
         <param field="Mode6" label="Toon version" width="200px" required="true" >
             <description><br/>Which Toon version is installed
             <br/>Toon v1 P1_dev default values: 2.1, 2.3, 2.5, 2.4 & 2.6
             <br/>Toon v2 P1_dev default values: 2.1, 2.4, 2.6, 2.5 & 2.7
-            <br/>Otherwise "User defined" and fill in your _dev values in below field</description>
+            <br/>Otherwise "user defined" and fill in your _dev values in below field</description>
             <options>
                 <option label="v1" value="v1"/>
                 <option label="v2" value="v2"  default="true" />
@@ -45,16 +44,17 @@
         </param>
         <param field="Mode5" label="P1 adresses user defined" width="200px" default="2.1;2.4;2.6;2.5;2.7" >
         <description><br/>Enter user defined P1 adresses separated by ';', example: 2.1;2.4;2.6;2.5;2.7
-        <br/>Check on your Toon which temperature value corresponds to which Scene</description>
+        <br/>Check your JSON output as described in the readme file for which dev_x.x value you must use</description>
         </param>
         <param field="Mode1" label="Scene temp " width="200px" required="true" default="18.0;17.0;19.5;20.0" >
         <description><br/>Scene configuration (default=18.0;17.0;19.5;20.0)
         <br/>The order is as follows:   Away;Sleep;Home;Comfort
-        <br/>Check on your Tone which temperature value corresponds to which Scene</description>
+        <br/>Check on your Toon which temperature value corresponds to which Scene</description>
         </param>
         <param field="Mode2" label="Refresh interval" width="100px">
             <options>
                 <option label="20s" value="20"/>
+                <option label="30s" value="30"/>
                 <option label="1m" value="60" default="true"/>
                 <option label="5m" value="300"/>
                 <option label="10m" value="600"/>
@@ -79,6 +79,9 @@
 </plugin>
 
 """
+import Domoticz
+import json
+from datetime import datetime
 
 #found URLs:
 #happ_pwrusage?action=GetProfileInfo # house and family profile
@@ -136,9 +139,6 @@ zwaveAdress = {
     "user": ["3.1", "3.4", "3.6", "3.5", "3.7"]
 }
  
-import Domoticz
-import json
-from datetime import datetime
 
 class BasePlugin:
     toonConnThermostatInfo = None
@@ -218,14 +218,12 @@ class BasePlugin:
         
         self.toonTSCinfo= Domoticz.Connection(Name="Toon Connection", Transport="TCP/IP", Protocol="HTTP", Address=Parameters["Address"], Port=Parameters["Port"])
         
-        self.toonSceneinfo= Domoticz.Connection(Name="Toon Connection", Transport="TCP/IP", Protocol="HTTP", Address=Parameters["Address"], Port=Parameters["Port"])
         
         sceneList = Parameters["Mode1"].split(';')
         self.scene1=sceneList[0]
         self.scene2=sceneList[1]
         self.scene3=sceneList[2]
         self.scene4=sceneList[3]  
-        self.scenes = []
         
         #Domoticz.Log(json.dumps(Parameters))
         if self.useZwave:
@@ -244,10 +242,10 @@ class BasePlugin:
         
         heartBeat = int(Parameters['Mode2'])
         Domoticz.Heartbeat(heartBeat)
-
         return True
+
         #fetch scenes config
-        self.getScenesConfig(self.toonSceneinfo)
+        self.getScenesConfig(self.toonConnThermostatInfo)
 
     def onStop(self):
         Domoticz.Debug("onStop called")
@@ -280,9 +278,6 @@ class BasePlugin:
             if (Connection == self.toonTSCinfo):
                 Domoticz.Debug("toonTSCinfo created")
                 requestUrl="/tsc/sensors"
-            if (Connection == self.toonSceneinfo):
-                Domoticz.Debug("toonSceneinfo created")
-                requestUrl="/hcb_config?action=getObjectConfigTree&package=happ_thermstat&internalAddress=thermostatStates"
 
             Domoticz.Debug("Connecting to: "+Parameters["Address"]+":"+Parameters["Port"] + requestUrl)
             Connection.Send({"Verb":"GET", "URL":requestUrl, "Headers": headers})
@@ -293,10 +288,11 @@ class BasePlugin:
         return True
 
     def onMessageThermostatInfo(self, Connection, Response):
-        Domoticz.Debug("onMessageThermostatInfo called with response: '" + str(Response) +"'")
+        Domoticz.Debug("onMessageThermostatInfo called")
         result='error'
         if 'result' in Response:
             result=Response['result']
+
         Domoticz.Debug("Toon getThermostatInfo command executed with status: " + result)
         if result!='ok':
             return
@@ -424,26 +420,16 @@ class BasePlugin:
             UpdateDevice(Unit=RoomHumidity, nValue=0, sValue=strtemperature+";"+strhumidity+";"+strhumstat)
             #UpdateDevice(Unit=RoomHumidity, nValue=47, sValue=1)
             
-            #TVOC: total volatile compounds (how bad is the air in your house poluted with other gases)
-            #ECO2: equivalent CO2 
-            #intensity: the light intensity of the surrounding of the toon
-            ### HUMSTAT            
-            #0=Normal
-            #1=Comfortable
-            #2=Dry
-            #3=Wet
+#TVOC: total volatile compounds (how bad is the air in your house poluted with other gases)
+#ECO2: equivalent CO2 
+#intensity: the light intensity of the surrounding of the toon
+### HUMSTAT            
+#0=Normal
+#1=Comfortable
+#2=Dry
+#3=Wet
 
         return
-
-    def onMessagetoonSceneinfo(self, Connection, Response):	
-        Domoticz.Debug("onMessagetoonSceneinfo called")
-        if 'states' in Response:
-            #this message contains the scenes
-            Domoticz.Debug("onMessagetoonSceneinfo processing list of scenes")
-            for state in Response['states']['state']:
-                self.scenes[state['id'][0]] = int(state['tempValue'][0])
-        else:
-            Domoticz.Debug("message does not contain states info: "+str(Response))
 
     def onMessageZwaveInfo(self, Connection, Response):
         Domoticz.Debug("onMessageZwaveInfo called")
@@ -527,11 +513,9 @@ class BasePlugin:
             if (Connection==self.toonConnSetControl):
                 Domoticz.Log("Something unexpected while onMessage: toonConnSetControl")
                 return
+
             if (Connection==self.toonTSCinfo):	
                 Domoticz.Log("Something unexpected while onMessage: toonTSCinfo")
-                return
-            if (Connection==self.toonSceneinfo):
-                Domoticz.Log("Something unexpected while onMessage: toonSceneinfo")
                 return
 
             Domoticz.Log("Unknown connection")
@@ -564,9 +548,6 @@ class BasePlugin:
 
         if (Connection==self.toonTSCinfo):	
             self.onMessagetoonTSCinfo(Connection, Response)
-            
-        if (Connection==self.toonSceneinfo):
-            self.onMessagetoonSceneinfo(Connection, Response)
 
         if Connection.Connected() == True:
             # try to disconnect after use to avoid overload on the Toon
@@ -620,22 +601,19 @@ class BasePlugin:
 
     def onDisconnect(self, Connection):
         if (Connection==self.toonConnThermostatInfo):
-            Domoticz.Log("onDisconnect called: ThermostatInfo")
+            Domoticz.Debug("onDisconnect called: ThermostatInfo")
             return
         if (Connection==self.toonConnBoilerInfo):
-            Domoticz.Log("onDisconnect called: BoilerInfo")
+            Domoticz.Debug("onDisconnect called: BoilerInfo")
             return
         if (Connection==self.toonConnZwaveInfo):
-            Domoticz.Log("onDisconnect called: toonConnZwaveInfo")
+            Domoticz.Debug("onDisconnect called: toonConnZwaveInfo")
             return
         if (Connection==self.toonConnSetControl):
-            Domoticz.Log("onDisconnect called: toonConnSetControl")
+            Domoticz.Debug("onDisconnect called: toonConnSetControl")
             return
         if (Connection==self.toonTSCinfo):	
-            Domoticz.Log("onDisconnect called: toonTSCinfo")
-            return
-        if (Connection==self.toonSceneinfo):
-            Domoticz.Log("onDisconnect called: toonSceneinfo")
+            Domoticz.Debug("onDisconnect called: toonTSCinfo")
             return
         Domoticz.Debug("onDisconnect called for other connection (this is rather strange......")
 
@@ -655,24 +633,14 @@ class BasePlugin:
         if (self.toonTSCinfo.Connected()==False):	
             self.toonTSCinfo.Connect()
 
-        if (self.toonSceneinfo.Connected()==False):
-            self.toonSceneinfo.Connect()
-
     def processScenesConfig(self, json_response):
         Domoticz.Debug("processing scenes config on data: "+str(json_response))
 
     def getScenesConfig(self, connection):
-        Domoticz.Debug("start to get scenes")
         requestUrl = "/hcb_config?action=getObjectConfigTree&package=happ_thermstat&internalAddress=thermostatStates"
-        headers = { 'Content-Type': 'text/xml; charset=utf-8', \
-                      'Connection': 'keep-alive', \
-                      'Accept': 'Content-Type: text/html; charset=UTF-8', \
-                      'Host': Parameters["Address"], \
-                      'User-Agent':'Domoticz/1.0' }
-        
         if connection.Connected() == False:
             connection.Connect()
-        connection.Send({"Verb":"GET", "URL":requestUrl, "Headers": headers})
+        connection.Send({"Verb":"GET", "URL":requestUrl, "Headers": self.headers})
         return
 
 global _plugin
