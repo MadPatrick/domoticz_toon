@@ -79,9 +79,6 @@
 </plugin>
 
 """
-import Domoticz
-import json
-from datetime import datetime
 
 #found URLs:
 #happ_pwrusage?action=GetProfileInfo # house and family profile
@@ -138,7 +135,10 @@ zwaveAdress = {
     "v2": ["2.1", "2.4", "2.6", "2.5", "2.7"],
     "user": ["3.1", "3.4", "3.6", "3.5", "3.7"]
 }
- 
+
+import Domoticz
+import json
+from datetime import datetime
 
 class BasePlugin:
     toonConnThermostatInfo = None
@@ -183,11 +183,11 @@ class BasePlugin:
         if boilerState not in Devices:
             burnerInfoOptions= {"LevelActions": "||", "LevelNames": "|Uit|CV|WW", "LevelOffHidden": "true", "SelectorStyle": "0"}
             Domoticz.Device(Name="Ketelmode", Unit=boilerState, Image=15, TypeName="Selector Switch", Options=burnerInfoOptions, Used=0).Create()
-        if boilerModulation not in Devices:	
+        if boilerModulation not in Devices:
             Domoticz.Device(Name="Ketel modulatie", Unit=boilerModulation, Type=243, Subtype=6, Used=0).Create()
-        if boilerSetPoint not in Devices:	
+        if boilerSetPoint not in Devices:
             Domoticz.Device(Name="Ketel setpoint", Unit=boilerSetPoint, Type=80, Subtype=5, Used=0).Create()
-        if RoomHumidity not in Devices:	
+        if RoomHumidity not in Devices:
             Domoticz.Device(Name="Luchtvochtigheid", Unit=RoomHumidity, Type=82, Subtype=1, Used=0).Create()
 
         if self.useZwave:
@@ -223,7 +223,8 @@ class BasePlugin:
         self.scene1=sceneList[0]
         self.scene2=sceneList[1]
         self.scene3=sceneList[2]
-        self.scene4=sceneList[3]  
+        self.scene4=sceneList[3]
+        self.scenes = []
         
         #Domoticz.Log(json.dumps(Parameters))
         if self.useZwave:
@@ -288,11 +289,10 @@ class BasePlugin:
         return True
 
     def onMessageThermostatInfo(self, Connection, Response):
-        Domoticz.Debug("onMessageThermostatInfo called")
+        Domoticz.Debug("onMessageThermostatInfo called with response: '" + str(Response) +"'")
         result='error'
         if 'result' in Response:
             result=Response['result']
-
         Domoticz.Debug("Toon getThermostatInfo command executed with status: " + result)
         if result!='ok':
             return
@@ -420,14 +420,14 @@ class BasePlugin:
             UpdateDevice(Unit=RoomHumidity, nValue=0, sValue=strtemperature+";"+strhumidity+";"+strhumstat)
             #UpdateDevice(Unit=RoomHumidity, nValue=47, sValue=1)
             
-#TVOC: total volatile compounds (how bad is the air in your house poluted with other gases)
-#ECO2: equivalent CO2 
-#intensity: the light intensity of the surrounding of the toon
-### HUMSTAT            
-#0=Normal
-#1=Comfortable
-#2=Dry
-#3=Wet
+            #TVOC: total volatile compounds (how bad is the air in your house poluted with other gases)
+            #ECO2: equivalent CO2 
+            #intensity: the light intensity of the surrounding of the toon
+            ### HUMSTAT            
+            #0=Normal
+            #1=Comfortable
+            #2=Dry
+            #3=Wet
 
         return
 
@@ -513,7 +513,6 @@ class BasePlugin:
             if (Connection==self.toonConnSetControl):
                 Domoticz.Log("Something unexpected while onMessage: toonConnSetControl")
                 return
-
             if (Connection==self.toonTSCinfo):	
                 Domoticz.Log("Something unexpected while onMessage: toonTSCinfo")
                 return
@@ -529,7 +528,7 @@ class BasePlugin:
         Response = json.loads(strData)
 
         if (Connection==self.toonConnSetControl):
-            Domoticz.Log("onMessage: toonConnSetControl")
+            Domoticz.Debug("onMessage: toonConnSetControl")
             result='error'
             if 'result' in Response:
                 result=Response['result']
@@ -640,7 +639,7 @@ class BasePlugin:
         requestUrl = "/hcb_config?action=getObjectConfigTree&package=happ_thermstat&internalAddress=thermostatStates"
         if connection.Connected() == False:
             connection.Connect()
-        connection.Send({"Verb":"GET", "URL":requestUrl, "Headers": self.headers})
+        connection.Send({"Verb":"GET", "URL":requestUrl, "Headers": headers})
         return
 
 global _plugin
