@@ -3,7 +3,7 @@
 # 
 #
 """
-<plugin key="RootedToonPlug" name="Toon Rooted" author="MadPatrick" version="1.4.16" externallink="https://www.domoticz.com/forum/viewtopic.php?f=34&t=34986">
+<plugin key="RootedToonPlug" name="Toon Rooted" author="MadPatrick" version="1.4.16" externallink="https://www.domoticz.com/forum/viewtopic.php?t=34986&hilit=toon">
     <description>
         <br/><h2>Domoticz Toon Rooted plugin</h2><br/>
         version: 1.4.16
