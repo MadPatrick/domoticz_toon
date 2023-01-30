@@ -80,21 +80,6 @@
 
 """
 
-#found URLs:
-#happ_pwrusage?action=GetProfileInfo # house and family profile
-#happ_thermstat?action=printTableInfo
-
-#Hervat programma
-#happ_thermstat?action=changeSchemeState&state=1&temperatureState=
-
-#hdrv_zwave?action=getDevices.json
-#hdrv_zwave?action=getContollerInfo
-#hdrv_zwave?action=GetContolStatus
-#hdrv_zwave?action=GetLinkQuality
-
-#no: 0 -> '10'
-#yes = 1 -> '20'
-#temporary 2 -> '30'
 programStates = ['10','20','30']
 rProgramStates = ['0','1','2']
 strProgramStates = ['Uit', 'Aan', 'Tijdelijk']
@@ -103,12 +88,6 @@ burnerInfos = ['10','20','30']
 rBurnerInfos = ['0','1','2']
 strBurnerInfos = ['Uit', 'CV', 'WW']
 
-#ComfortLevelValue: 0 ->'40'
-#HomeLevelValue: 1 -> '30'
-#SleepLevelValue: 2 ->  '20'
-#AwayLevelValue: 3 -> '10'
-#Holiday: 4 ->'60'
-#programs = ['40','30','20','10','60']
 programs = ['40','30','20','10','50']
 rPrograms = ['3','2','1','0','4']
 strPrograms = ['Comfort', 'Thuis', 'Slapen', 'Weg','Manual']
@@ -215,6 +194,7 @@ class BasePlugin:
             self.toonConnZwaveInfo.Connect()
 
         self.toonConnSetControl= Domoticz.Connection(Name="Toon Connection", Transport="TCP/IP", Protocol="HTTP", Address=Parameters["Address"], Port=Parameters["Port"])
+
         
 #TSC        self.toonTSCinfo= Domoticz.Connection(Name="Toon Connection", Transport="TCP/IP", Protocol="HTTP", Address=Parameters["Address"], Port=Parameters["Port"])
         
@@ -565,16 +545,16 @@ class BasePlugin:
             self.toonConnSetControl.Connect()
 
         if (Unit == autoProgram):
-            Domoticz.Log("ProgramState")
-            Domoticz.Log(str(Level)+" -> " + rProgramStates[int((Level//10)-1)])
+            Domoticz.Log("Auto Program : " + strProgramStates[(Level//10)])
+#            Domoticz.Log(str(Level)+" -> " + strProgramStates[(Level//10)])
             self.programState=str(Level)
             Devices[Unit].Update(nValue = 0, sValue = str(Level))
             self.toonSetControlUrl="/happ_thermstat?action=changeSchemeState&state="+rProgramStates[int((Level//10)-1)]
             self.toonConnSetControl.Connect()
 
         if (Unit == scene):
-            Domoticz.Log("Program")
-            Domoticz.Log(str(Level)+" -> "+rPrograms[int((Level//10)-1)])
+            Domoticz.Log("Scene : " +strPrograms[(Level//10)])
+#            Domoticz.Log(str(Level)+" -> "+strPrograms[(Level//10)])
             self.program=str(Level)
             Devices[Unit].Update(nValue = 0, sValue = str(Level))
             self.toonSetControlUrl="/happ_thermstat?action=changeSchemeState&state=2&temperatureState="+rPrograms[int((Level//10)-1)]
