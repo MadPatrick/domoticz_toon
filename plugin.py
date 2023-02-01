@@ -356,7 +356,7 @@ class BasePlugin:
                 self.toonSetControlUrl="/happ_thermstat?action=changeSchemeState&state=2&temperatureState=1"
                 self.toonConnSetControl.Connect()
             if (strCurrentSetpoint == self.scene4) and (program !='0'):
-                Domoticz.Log("Change Scene = ") + program
+                Domoticz.Log("Change Scene = " + program)
                 UpdateDevice(Unit=scene, nValue=0, sValue=programs[0])
                 self.toonSetControlUrl="/happ_thermstat?action=changeSchemeState&state=2&temperatureState=0"
                 self.toonConnSetControl.Connect()
