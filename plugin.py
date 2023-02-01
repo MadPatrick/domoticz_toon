@@ -3,10 +3,10 @@
 # 
 #
 """
-<plugin key="RootedToonPlug" name="Toon Rooted" author="MadPatrick" version="1.4.18" externallink="https://github.com/MadPatrick/domoticz_toon">
+<plugin key="RootedToonPlug" name="Toon Rooted" author="MadPatrick" version="1.4.19" externallink="https://github.com/MadPatrick/domoticz_toon">
     <description>
         <br/><h2>Domoticz Toon Rooted plugin</h2><br/>
-        version: 1.4.18
+        version: 1.4.19
         <br/>The configuration contains the following sections:
         <ul style="list-style-type:square">
             <li>Interfacing between Domoticz and a rooted Toon</li>
@@ -106,7 +106,7 @@ p1electricity = 10
 boilerState = 11
 boilerModulation = 12
 boilerSetPoint = 13
-RoomHumidity = 14
+roomHumidity = 14
 
 #zwave device adresses
 zwaveAdress = {
@@ -166,8 +166,8 @@ class BasePlugin:
             Domoticz.Device(Name="Ketel modulatie", Unit=boilerModulation, Type=243, Subtype=6, Used=0).Create()
         if boilerSetPoint not in Devices:
             Domoticz.Device(Name="Ketel setpoint", Unit=boilerSetPoint, Type=80, Subtype=5, Used=0).Create()
-#TSC        if RoomHumidity not in Devices:
-#TSC            Domoticz.Device(Name="Luchtvochtigheid", Unit=RoomHumidity, Type=82, Subtype=1, Used=0).Create()
+#TSC        if roomHumidity not in Devices:
+#TSC            Domoticz.Device(Name="Luchtvochtigheid", Unit=roomHumidity, Type=82, Subtype=1, Used=0).Create()
 
         if self.useZwave:
             if gas not in Devices:
@@ -338,20 +338,25 @@ class BasePlugin:
         if 'currentSetpoint' in Response:
             currentSetpoint=float(Response['currentSetpoint'])/100
             strCurrentSetpoint="%.1f" % currentSetpoint
+            program=Response['activeState']
             UpdateDevice(Unit=setTemp, nValue=0, sValue=strCurrentSetpoint)
-            if strCurrentSetpoint == self.scene1:
+            if (strCurrentSetpoint == self.scene1) and (program !='3'):
+                Domoticz.Log("Change Scene = " + program)
                 UpdateDevice(Unit=scene, nValue=0, sValue=programs[3])
                 self.toonSetControlUrl="/happ_thermstat?action=changeSchemeState&state=2&temperatureState=3"
                 self.toonConnSetControl.Connect()
-            if strCurrentSetpoint == self.scene2:
+            if (strCurrentSetpoint == self.scene2) and (program !='2'):
+                Domoticz.Log("Change Scene = " + program)
                 UpdateDevice(Unit=scene, nValue=0, sValue=programs[2])
                 self.toonSetControlUrl="/happ_thermstat?action=changeSchemeState&state=2&temperatureState=2"
                 self.toonConnSetControl.Connect()
-            if strCurrentSetpoint == self.scene3:
+            if (strCurrentSetpoint == self.scene3) and (program !='1'):
                 UpdateDevice(Unit=scene, nValue=0, sValue=programs[1])
+                Domoticz.Log("Change Scene = " + program)
                 self.toonSetControlUrl="/happ_thermstat?action=changeSchemeState&state=2&temperatureState=1"
                 self.toonConnSetControl.Connect()
-            if strCurrentSetpoint == self.scene4:
+            if (strCurrentSetpoint == self.scene4) and (program !='0'):
+                Domoticz.Log("Change Scene = ") + program
                 UpdateDevice(Unit=scene, nValue=0, sValue=programs[0])
                 self.toonSetControlUrl="/happ_thermstat?action=changeSchemeState&state=2&temperatureState=0"
                 self.toonConnSetControl.Connect()
@@ -397,7 +402,7 @@ class BasePlugin:
 #TSC            if dewpoint > 8: humstat = 0
 #TSC            if dewpoint > 10: humstat = 3
 #TSC            strhumstat="%.0f" % humstat
-#TSC            UpdateDevice(Unit=RoomHumidity, nValue=0, sValue=strtemperature+";"+strhumidity+";"+strhumstat)
+#TSC            UpdateDevice(Unit=roomHumidity, nValue=0, sValue=strtemperature+";"+strhumidity+";"+strhumstat)
             
             #TVOC: total volatile compounds (how bad is the air in your house poluted with other gases)
             #ECO2: equivalent CO2 
