@@ -3,76 +3,81 @@
 # 
 #
 """
-<plugin key="RootedToonPlug" name="Toon Rooted" author="MadPatrick" version="1.4.19" externallink="https://github.com/MadPatrick/domoticz_toon">
+<plugin key="RootedToonPlug" name="Toon Rooted" author="MadPatrick" version="1.4.20" externallink="https://github.com/MadPatrick/domoticz_toon">
     <description>
         <br/><h2>Domoticz Toon Rooted plugin</h2><br/>
-        version: 1.4.19
+        version: 1.4.20
         <br/>The configuration contains the following sections:
         <ul style="list-style-type:square">
-            <li>Interfacing between Domoticz and a rooted Toon</li>
-            <li>The rooted toon is directly queried via http json commands</li>
-            <li>Toon P1 data</li>
-            <li>Toon Gas data</li>
-            <li>Toon Setpoint</li>
-            <li>Toon Scenes</li>
-            <li>Toon Auto Program and Program info</li>
-            <li>Boiler pressure info</li>
-            <li>Boiler modulation info</li>
-            <li>Boiler mode</li>
+        <li>Interfacing between Domoticz and a rooted Toon</li>
+        <li>The rooted toon is directly queried via http json commands</li>
+        <li>Toon Setpoint</li>
+        <li>Toon Scenes</li>
+        <li>Toon Auto Program and Program info</li>
+        <li>Boiler mode</li>
+        <li>Boiler pressure   (App installed on Toon)</li>
+        <li>Boiler Setpoint   (App installed on Toon)</li>
+        <li>Boiler modulation (App installed on Toon)</li>
+        <li>Toon P1 data      (P1 connected)</li>
+        <li>Toon Gas data     (P1 connected)</li>
         </ul>
-       <br/>
-       <br/>
-    </description>
+        <br/>
+        </description>
     <params>
-        <param field="Address" label="IP Address" width="200px" required="true" default="192.168.1.200" >
-        <description><p style="color:yellow"><b>General configuration</b></p>
-        <br/>IP address and port of your Toon device</description>
+            <param field="Address" label="IP Address" width="200px" required="true" default="192.168.1.200" >
+            <description><h2>General configuration</h2>
+            IP address and port of your Toon device</description>
         </param>
-        <param field="Port" label="Port" width="50px" required="true" default="80" >
+            <param field="Port" label="Port" width="50px" required="true" default="80" >
         </param>
-        <param field="Mode6" label="Toon version" width="200px" required="true" >
-            <description><br/>Which Toon version is installed
-            <br/>Toon v1 P1_dev default values: 2.1, 2.3, 2.5, 2.4 & 2.6
-            <br/>Toon v2 P1_dev default values: 2.1, 2.4, 2.6, 2.5 & 2.7
-            <br/>Otherwise "user defined" and fill in your _dev values in below field</description>
+            <param field="Mode6" label="Toon version" width="200px" required="true" >
+            <description>
+            <br/>Which Toon version is installed :
+            <ul style="list-style-type:square">
+            <li>Toon v1 P1_dev default values: 2.1, 2.3, 2.5, 2.4 & 2.6</li>
+            <li>Toon v2 P1_dev default values: 2.1, 2.4, 2.6, 2.5 & 2.7</li>
+            <li>Otherwise "user defined" and fill in your _dev values in below field</li>
+            </ul>
+            </description>
             <options>
-                <option label="v1" value="v1"/>
-                <option label="v2" value="v2"  default="true" />
-                <option label="user defined" value="user"/>
+            <option label="v1" value="v1"/>
+            <option label="v2" value="v2"  default="true" />
+            <option label="user defined" value="user"/>
             </options>
         </param>
-        <param field="Mode5" label="P1 adresses user defined" width="200px" default="2.1;2.4;2.6;2.5;2.7" >
-        <description><br/>Enter user defined P1 adresses separated by ';', example: 2.1;2.4;2.6;2.5;2.7
-        <br/><p style="color:red">Get the internalAddress of the device via : http://TOONIP/hdrv_zwave?action=getDevices.json
-        <br/>Check your JSON output as described in the readme file for which dev_x.x value you must use</p></description>
+            <param field="Mode1" label="Scene temp " width="200px" required="true" default="18.0;17.0;19.5;20.0" >
+            <description><br/>Scene configuration (default=18.0;17.0;19.5;20.0)
+            <br/>The order is as follows:   Away;Sleep;Home;Comfort
+            <br/>Check on your Toon which temperature value corresponds to which Scene</description>
         </param>
-        <param field="Mode1" label="Scene temp " width="200px" required="true" default="18.0;17.0;19.5;20.0" >
-        <description><br/>Scene configuration (default=18.0;17.0;19.5;20.0)
-        <br/>The order is as follows:   Away;Sleep;Home;Comfort
-        <br/>Check on your Toon which temperature value corresponds to which Scene</description>
-        </param>
-        <param field="Mode2" label="Refresh interval" width="100px">
+            <param field="Mode2" label="Refresh interval" width="100px">
             <options>
-                <option label="20s" value="20"/>
-                <option label="30s" value="30"/>
-                <option label="1m" value="60" default="true"/>
-                <option label="5m" value="300"/>
-                <option label="10m" value="600"/>
-                <option label="15m" value="900"/>
+            <option label="20s" value="20"/>
+            <option label="30s" value="30"/>
+            <option label="1m" value="60" default="true"/>
+            <option label="5m" value="300"/>
+            <option label="10m" value="600"/>
+            <option label="15m" value="900"/>
             </options>
         </param>
-        <param field = "Mode3" label="P1 data" width="100px">
+            <param field = "Mode3" label="P1 data" width="100px">
             <description><br/>Enable the P1 data
             <br/>Power measurement consumed and returned (solar power)</description>
             <options>
-                <option label="Yes" value="Yes"/>
-                <option label="No" value="No" default="true"/>
+            <option label="Yes" value="Yes"/>
+            <option label="No" value="No" default="true"/>
             </options>
         </param>
-        <param field = "Mode4" label="Debug logging" width="100px">
+            <param field="Mode5" label="P1 adresses" width="200px" default="2.1;2.4;2.6;2.5;2.7" >
+            <description><br/>Enter user defined P1 adresses separated by ';', example: 2.1;2.4;2.6;2.5;2.7
+            <br/><p style="color:red">Get the internalAddress of the device via : <a>http://TOONIP/hdrv_zwave?action=getDevices.json</a>
+            <br/>Check your JSON output as described in the readme file for which dev_x.x value you must use</p></description>
+        </param>
+            <param field = "Mode4" label="Debug logging" width="100px">
+            <description><br/>Enable Debug logging</description>
             <options>
-                <option label="True" value="Debug"/>
-                <option label="False" value="Normal" default="true" />
+            <option label="True" value="Debug"/>
+            <option label="False" value="Normal" default="true" />
             </options>
         </param>
     </params>
@@ -338,25 +343,25 @@ class BasePlugin:
         if 'currentSetpoint' in Response:
             currentSetpoint=float(Response['currentSetpoint'])/100
             strCurrentSetpoint="%.1f" % currentSetpoint
-            program=Response['activeState']
+            currentScene=Response['activeState']
             UpdateDevice(Unit=setTemp, nValue=0, sValue=strCurrentSetpoint)
-            if (strCurrentSetpoint == self.scene1) and (program !='3'):
-                Domoticz.Log("Change Scene = " + program)
+            if (strCurrentSetpoint == self.scene1) and (currentScene !='3'):
+                Domoticz.Log("Scene changed :  Weg")
                 UpdateDevice(Unit=scene, nValue=0, sValue=programs[3])
                 self.toonSetControlUrl="/happ_thermstat?action=changeSchemeState&state=2&temperatureState=3"
                 self.toonConnSetControl.Connect()
-            if (strCurrentSetpoint == self.scene2) and (program !='2'):
-                Domoticz.Log("Change Scene = " + program)
+            if (strCurrentSetpoint == self.scene2) and (currentScene !='2'):
+                Domoticz.Log("Scene changed : Slapen")
                 UpdateDevice(Unit=scene, nValue=0, sValue=programs[2])
                 self.toonSetControlUrl="/happ_thermstat?action=changeSchemeState&state=2&temperatureState=2"
                 self.toonConnSetControl.Connect()
-            if (strCurrentSetpoint == self.scene3) and (program !='1'):
+            if (strCurrentSetpoint == self.scene3) and (currentScene !='1'):
                 UpdateDevice(Unit=scene, nValue=0, sValue=programs[1])
-                Domoticz.Log("Change Scene = " + program)
+                Domoticz.Log("Scene changed : Thuis")
                 self.toonSetControlUrl="/happ_thermstat?action=changeSchemeState&state=2&temperatureState=1"
                 self.toonConnSetControl.Connect()
-            if (strCurrentSetpoint == self.scene4) and (program !='0'):
-                Domoticz.Log("Change Scene = " + program)
+            if (strCurrentSetpoint == self.scene4) and (currentScene !='0'):
+                Domoticz.Log("Scene changed : Comfort")
                 UpdateDevice(Unit=scene, nValue=0, sValue=programs[0])
                 self.toonSetControlUrl="/happ_thermstat?action=changeSchemeState&state=2&temperatureState=0"
                 self.toonConnSetControl.Connect()
@@ -571,7 +576,7 @@ class BasePlugin:
 ##            Domoticz.Log(str(Level)+" -> "+rBurnerInfos[int((Level//10)-1)])
 ##            self.burnerInfo=str(Level)
 ##            Devices[Unit].Update(nValue = 0, sValue = str(Level))
-##           self.toonSetControlUrl="/happ_thermstat?action=changeSchemeState&state=2&temperatureState="+rBurnerInfos[int((Level//10)-1)]
+##            self.toonSetControlUrl="/happ_thermstat?action=changeSchemeState&state=2&temperatureState="+rBurnerInfos[int((Level//10)-1)]
 ##            Domoticz.Debug(self.toonSetControlUrl)
 ##            self.toonConnSetControl.Connect()
 
