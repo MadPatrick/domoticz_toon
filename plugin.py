@@ -95,7 +95,7 @@ strBurnerInfos = ['Uit', 'CV', 'WW']
 
 programs = ['40','30','20','10','50']
 rPrograms = ['3','2','1','0','4']
-strPrograms = ['Comfort', 'Thuis', 'Slapen', 'Weg','Manual']
+strPrograms = ['Weg', 'Slapen', 'Thuis', 'Comfort','Manual']
 
 #device unit number definitions
 curTemp = 1
@@ -122,6 +122,7 @@ zwaveAdress = {
 
 import Domoticz
 import json
+import requests
 from datetime import datetime
 
 class BasePlugin:
@@ -380,7 +381,7 @@ class BasePlugin:
                 strNextProgram=strPrograms[int(toonInformation['nextState'])]
                 strNextSetpoint="%.1f" % (float(toonInformation['nextSetpoint'])/100)
                 strToonInformation="Next program %s (%s C) at %s" % (strNextProgram, strNextSetpoint, strNextTime)
-
+            
             UpdateDevice(Unit=programInfo, nValue=0, sValue=strToonInformation)
 
         return
@@ -555,16 +556,16 @@ class BasePlugin:
             self.toonConnSetControl.Connect()
 
         if (Unit == autoProgram):
-            Domoticz.Log("Auto Program : " + strProgramStates[(Level//10)])
-#            Domoticz.Log(str(Level)+" -> " + strProgramStates[(Level//10)])
+            Domoticz.Log("Auto Program : " + strProgramStates[(Level//10)-1])
+#            Domoticz.Log(str(Level)+" -> "+rPrograms[int((Level//10)-1)])
             self.programState=str(Level)
             Devices[Unit].Update(nValue = 0, sValue = str(Level))
             self.toonSetControlUrl="/happ_thermstat?action=changeSchemeState&state="+rProgramStates[int((Level//10)-1)]
             self.toonConnSetControl.Connect()
 
         if (Unit == scene):
-            Domoticz.Log("Scene : " +strPrograms[(Level//10)])
-#            Domoticz.Log(str(Level)+" -> "+strPrograms[(Level//10)])
+            Domoticz.Log("Scene : " +strPrograms[(Level//10)-1])
+#            Domoticz.Log(str(Level)+" -> "+rPrograms[int((Level//10)-1)])
             self.program=str(Level)
             Devices[Unit].Update(nValue = 0, sValue = str(Level))
             self.toonSetControlUrl="/happ_thermstat?action=changeSchemeState&state=2&temperatureState="+rPrograms[int((Level//10)-1)]
