@@ -3,10 +3,10 @@
 # 
 #
 """
-<plugin key="RootedToonPlug" name="Toon Rooted" author="MadPatrick" version="1.4.21" externallink="https://github.com/MadPatrick/domoticz_toon">
+<plugin key="RootedToonPlug" name="Toon Rooted" author="MadPatrick" version="1.4.22" externallink="https://github.com/MadPatrick/domoticz_toon">
     <description>
         <br/><h2>Domoticz Toon Rooted plugin</h2><br/>
-        version: 1.4.21
+        version: 1.4.22
         <br/>The configuration contains the following sections:
         <ul style="list-style-type:square">
         <li>Interfacing between Domoticz and a rooted Toon</li>
@@ -386,15 +386,15 @@ class BasePlugin:
 
         return
 
-    def onMessageToonSceneinfo(self, Connection, Response):	
-        Domoticz.Debug("onMessagetoonSceneinfo called")
-        if 'states' in Response:
-            #this message contains the scenes
-            Domoticz.Debug("onMessagetoonSceneinfo processing list of scenes")
-            for state in Response["states"][0]["state"]:
-                Domoticz.Debug("id ="+ state["id"][0] + " Temp =" + state["tempValue"][0])
-                #self.scenes[int(state["id"][0])] = int(state["tempValue"][0])
-                self.scenes[int(state["tempValue"][0])] = int(state["id"][0])
+															
+													   
+								
+											 
+																			  
+														
+																						  
+																			  
+																			 
 
     def onMessageBoilerInfo(self, Connection, Response):
         Domoticz.Debug("onMessageBoilerInfo called")
@@ -617,14 +617,14 @@ class BasePlugin:
     def onHeartbeat(self):
         Domoticz.Debug("onHeartbeat called")
 
-        if (self.toonConnThermostatInfo.Connected()==False):
+        if (self.toonConnThermostatInfo.Connected()==False and self.toonConnThermostatInfo.Connecting()==False ):
             self.toonConnThermostatInfo.Connect()
 
-        if (self.toonConnBoilerInfo.Connected()==False):
+        if (self.toonConnBoilerInfo.Connected()==False and self.toonConnBoilerInfo.Connecting()==False ):
             self.toonConnBoilerInfo.Connect()
 
         if self.useZwave:
-            if (self.toonConnZwaveInfo.Connected()==False):
+            if (self.toonConnZwaveInfo.Connected()==False and self.toonConnZwaveInfo.Connecting()==False ):
                 self.toonConnZwaveInfo.Connect()
             
         #TSC        if (self.toonTSCinfo.Connected()==False):	
