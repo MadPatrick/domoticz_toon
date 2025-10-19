@@ -47,7 +47,8 @@ For example:
 You can fill in these numbers in the user defined field seperated by ;
 
 ### Configuration menu
-![image](https://user-images.githubusercontent.com/81873830/214091415-6063c7d8-8e4b-46f3-b1e6-c2dfb01d9e1e.png)
+<img width="1075" height="697" alt="image" src="https://github.com/user-attachments/assets/07db1af3-d88e-42e0-9a1e-76021fe03f95" />
+
 
 ### installed devices
 ![image](https://user-images.githubusercontent.com/81873830/210851429-d6085416-cc71-4519-8603-94d8226793e3.png)
