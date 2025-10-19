@@ -51,5 +51,6 @@ You can fill in these numbers in the user defined field seperated by ;
 
 
 ### installed devices
-![image](https://user-images.githubusercontent.com/81873830/210851429-d6085416-cc71-4519-8603-94d8226793e3.png)
+<img width="1085" height="621" alt="image" src="https://github.com/user-attachments/assets/333406c0-68aa-4a0d-bd1d-022f86e037c1" />
+
 
