@@ -5,10 +5,10 @@
     <description>
         <br/><h2>Domoticz Toon Rooted plugin</h2><br/>
         version: 2.1.0
+        Interfacing between Domoticz and a rooted Toon
+        The rooted toon is directly queried via http json commands
         <br/>The configuration contains the following sections:
         <ul style="list-style-type:square">
-        <li>Interfacing between Domoticz and a rooted Toon</li>
-        <li>The rooted toon is directly queried via http json commands</li>
         <li>Toon Setpoint</li>
         <li>Toon Scenes</li>
         <li>Toon Auto Program and Program info</li>
