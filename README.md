@@ -30,7 +30,7 @@ The P1 values are predefined for most common Toons.
 It is possible that your Toon has different values. 
 You can check this via the JSON link
 
-http://TOON_IP/hdrv_zwave?action=getDevices.json
+```http://TOON_IP/hdrv_zwave?action=getDevices.json```
  
 Unfortunately, there is no good information in the JSON to determine which number belongs to which device.
 Also, there are different numbers between different Toon's, such as dev_2.x or dev_3.x.......
