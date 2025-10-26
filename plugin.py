@@ -1,7 +1,7 @@
 # Toon Plugin for Domoticz
 
 """
-<plugin key="RootedToonPlug" name="Toon Rooted" author="MadPatrick" version="2.2.2" externallink="https://github.com/MadPatrick/domoticz_toon">
+<plugin key="RootedToonPlug" name="Toon Rooted" author="MadPatrick" version="2.2.5" externallink="https://github.com/MadPatrick/domoticz_toon">
     <description>
         <br/><h2>Domoticz Toon Rooted plugin</h2><br/>
         version: 2.2.2
@@ -284,20 +284,20 @@ class BasePlugin:
             setpoint = float(Response['currentSetpoint']) / 100
             UpdateDevice(setTemp, 0, "%.1f" % setpoint)
 
-            toon_scene = self.getActiveSceneFromToon()
-            if toon_scene is not None:
+            # Scene altijd bijwerken op basis van setpoint
+            matched_scene_id = None
+            for scene_id, temp in self.scene_map.items():
+                if abs(temp - setpoint) < 0.05:
+                    matched_scene_id = int(scene_id)
+                    break
+            if matched_scene_id is not None:
                 current_scene_val = int(Devices[scene].sValue) if scene in Devices else None
-                if current_scene_val != toon_scene:
-                    Domoticz.Log(f"Toon scene gewijzigd: {current_scene_val} ? {toon_scene}")
-                    UpdateDevice(scene, 0, str(toon_scene))
-            else:
-                matched_scene_id = None
-                for scene_id, temp in self.scene_map.items():
-                    if abs(temp - setpoint) < 0.05:
-                        matched_scene_id = int(scene_id)
-                        break
-                if matched_scene_id is not None:
+                if current_scene_val != matched_scene_id:
+                    Domoticz.Log(f"Toon setpoint gewijzigd: Scene {current_scene_val} -> {matched_scene_id}")
                     UpdateDevice(scene, 0, str(matched_scene_id))
+            else:
+                # Als geen match, zet op Manual (50)
+                UpdateDevice(scene, 50, "50")
 
         if 'programState' in Response:
             prog_index = int(Response['programState'])
