@@ -4,7 +4,7 @@
 <plugin key="RootedToonPlug" name="Toon Rooted" author="MadPatrick" version="2.2.5" externallink="https://github.com/MadPatrick/domoticz_toon">
     <description>
         <br/><h2>Domoticz Toon Rooted plugin</h2><br/>
-        version: 2.2.2
+        version: 2.2.5
         <br/>Volledige synchronisatie van Scenes en Setpoints tussen Domoticz en Toon.
     </description>
     <params>
