@@ -1,10 +1,10 @@
 # Toon Plugin for Domoticz
 
 """
-<plugin key="RootedToonPlug" name="Toon Rooted" author="MadPatrick" version="2.2.5" externallink="https://github.com/MadPatrick/domoticz_toon">
+<plugin key="RootedToonPlug" name="Toon Rooted" author="MadPatrick" version="2.3.1" externallink="https://github.com/MadPatrick/domoticz_toon">
     <description>
         <br/><h2>Domoticz Toon Rooted plugin</h2><br/>
-        version: 2.2.5
+        version: 2.3.1
         <br/>Volledige synchronisatie van Scenes en Setpoints tussen Domoticz en Toon.
     </description>
     <params>
@@ -93,14 +93,14 @@ class BasePlugin:
         self.ia_edlt = ''
         self.ia_ernt = ''
         self.ia_erlt = ''
-        self.scene_fetch_interval = 300  # tijdelijke default, overschreven in onStart()
+        self.scene_fetch_interval = 300  # default, overschreven in onStart()
         self._scene_last_fetch = 0
 
     # --- Domoticz lifecycle ---
     def onStart(self):
         Domoticz.Log("Toon: Starting version: " + Parameters["Version"])
 
-        # Scene fetch interval ophalen uit Mode1
+        # Scene refresh interval ophalen uit Mode1
         try:
             self.scene_fetch_interval = int(Parameters.get("Mode1", 300))
         except Exception:
@@ -188,8 +188,8 @@ class BasePlugin:
     # --- Heartbeat ---
     def onHeartbeat(self):
         now = int(time.time())
-
-        # Scene fetch apart op interval van 300 sec
+        
+        # Scene fetch apart op interval van Mode1
         if now - self._scene_last_fetch >= self.scene_fetch_interval:
             self.fetchScenes()
             self._scene_last_fetch = now
@@ -226,12 +226,14 @@ class BasePlugin:
         state_list = data['states'][0]['state']
         new_scene_map = {}
         for s in state_list:
-            id_ = int(s['id'][0])
-            temp = float(s['tempValue'][0]) / 100
-            if id_ <= 3:
-                new_scene_map[str(self.idToScene(id_))] = temp
+            try:
+                id_ = int(s['id'][0])
+                temp = float(s['tempValue'][0]) / 100
+                if id_ <= 3:
+                    new_scene_map[str(self.idToScene(id_))] = temp
+            except Exception as e:
+                Domoticz.Debug(f"fetchScenes: kon state niet verwerken: {e}")
 
-        # Alleen loggen als er iets is veranderd
         if new_scene_map != self.scene_map:
             self.scene_map = new_scene_map
             Domoticz.Log(f"Toon: Scenes fetched from Toon: {list(self.scene_map.values())}")
@@ -242,17 +244,13 @@ class BasePlugin:
         mapping = {0: 40, 1: 30, 2: 20, 3: 10}
         return mapping.get(id_, 50)
 
-    def sceneToId(self, scene_val):
-        mapping = {40: 0, 30: 1, 20: 2, 10: 3}
-        return mapping.get(scene_val, None)
-
     def getActiveSceneFromToon(self):
         data = self.fetchJson("/happ_thermstat?action=getActiveState")
         if data and "state" in data:
             try:
                 toon_state = int(data["state"])
                 scene_level = self.idToScene(toon_state)
-                Domoticz.Debug(f"Actieve Toon scene: {toon_state} ? Domoticz level {scene_level}")
+                Domoticz.Debug(f"Actieve Toon scene: {toon_state} -> Domoticz level {scene_level}")
                 return scene_level
             except Exception as e:
                 Domoticz.Debug(f"Kon actieve scene niet bepalen: {e}")
@@ -266,12 +264,14 @@ class BasePlugin:
                 break
 
         if matched_scene_id is not None:
-            UpdateDevice(scene, 0, str(matched_scene_id))
-            state_map = {10: 3, 20: 2, 30: 1, 40: 0}
-            newState = state_map.get(matched_scene_id, None)
-            if newState is not None:
-                self.fetchJson(f"/happ_thermstat?action=changeSchemeState&state=2&temperatureState={newState}")
-                Domoticz.Debug(f"Scene {matched_scene_id} ingesteld op Toon met state {newState}")
+            current_scene_val = int(Devices[scene].sValue) if scene in Devices else None
+            if current_scene_val != matched_scene_id:
+                UpdateDevice(scene, 0, str(matched_scene_id))
+                state_map = {10: 3, 20: 2, 30: 1, 40: 0}
+                newState = state_map.get(matched_scene_id, None)
+                if newState is not None:
+                    self.fetchJson(f"/happ_thermstat?action=changeSchemeState&state=2&temperatureState={newState}")
+                    Domoticz.Debug(f"Scene {matched_scene_id} ingesteld op Toon met state {newState}")
         else:
             UpdateDevice(scene, 50, "50")  # Manual / geen match
 
@@ -279,12 +279,10 @@ class BasePlugin:
     def updateThermostatDevices(self, Response):
         if 'currentTemp' in Response:
             UpdateDevice(curTemp, 0, "%.1f" % (float(Response['currentTemp']) / 100))
-
         if 'currentSetpoint' in Response:
             setpoint = float(Response['currentSetpoint']) / 100
             UpdateDevice(setTemp, 0, "%.1f" % setpoint)
-
-            # Scene altijd bijwerken op basis van setpoint
+            # Scene bijwerken
             matched_scene_id = None
             for scene_id, temp in self.scene_map.items():
                 if abs(temp - setpoint) < 0.05:
@@ -296,15 +294,9 @@ class BasePlugin:
                     Domoticz.Log(f"Toon setpoint gewijzigd: Scene {current_scene_val} -> {matched_scene_id}")
                     UpdateDevice(scene, 0, str(matched_scene_id))
             else:
-                # Als geen match, zet op Manual (50)
                 UpdateDevice(scene, 50, "50")
-
         if 'programState' in Response:
-            prog_index = int(Response['programState'])
-            nValue = prog_index
-            sValue = strProgramStates[prog_index]  # ['Uit', 'Aan', 'Tijdelijk']
-            UpdateDevice(autoProgram, nValue, sValue)
-
+            UpdateDevice(autoProgram, 0, programStates[int(Response['programState'])])
         if 'burnerInfo' in Response:
             UpdateDevice(boilerState, 0, burnerInfos[int(Response['burnerInfo'])])
         if 'currentModulationLevel' in Response:
