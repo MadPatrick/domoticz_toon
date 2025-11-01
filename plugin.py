@@ -1,10 +1,10 @@
 # Toon Plugin for Domoticz
 
 """
-<plugin key="RootedToonPlug" name="Toon Rooted" author="MadPatrick" version="2.4.0" externallink="https://github.com/MadPatrick/domoticz_toon">
+<plugin key="RootedToonPlug" name="Toon Rooted" author="MadPatrick" version="2.4.1" externallink="https://github.com/MadPatrick/domoticz_toon">
     <description>
         <br/><h2>Domoticz Toon Rooted plugin</h2><br/>
-        version: 2.4.0
+        version: 2.4.1
         <br/>Volledige synchronisatie van Scenes en Setpoints tussen Domoticz en Toon.
     </description>
     <params>
@@ -46,20 +46,14 @@
 """
 
 import Domoticz
-import json
 import requests
+from datetime import datetime
 
 # --- Constants and device definitions ---
 programStates = ['10','20','30']
-rProgramStates = ['0','1','2']
 strProgramStates = ['Uit', 'Aan', 'Tijdelijk']
-
 burnerInfos = ['10','20','30']
-rBurnerInfos = ['0','1','2']
 strBurnerInfos = ['Uit', 'CV', 'WW']
-
-programs = ['10','20','30','40','50']
-rPrograms = ['3','2','1','0','4']
 strPrograms = ['Weg', 'Slapen', 'Thuis', 'Comfort','Manual']
 
 # Device unit numbers
@@ -100,6 +94,7 @@ class BasePlugin:
         if Parameters["Mode3"] == "Yes":
             self.useZwave = True
 
+        # --- Create devices if not exist ---
         if curTemp not in Devices:
             Domoticz.Device(Name="Temperatuur", Unit=curTemp, TypeName="Temperature", Used=1).Create()
         if setTemp not in Devices:
@@ -119,6 +114,8 @@ class BasePlugin:
             Domoticz.Device(Name="Ketel modulatie", Unit=boilerModulation, Type=243, Subtype=6, Used=0).Create()
         if boilerSetPoint not in Devices:
             Domoticz.Device(Name="Ketel setpoint", Unit=boilerSetPoint, Type=80, Subtype=5, Used=0).Create()
+        if programInfo not in Devices:
+            Domoticz.Device(Name="ProgramInfo", Unit=programInfo, TypeName="Text", Used=1).Create()
 
         if self.useZwave:
             if gas not in Devices:
@@ -154,6 +151,7 @@ class BasePlugin:
             setpoint = int(Level * 100)
             self.fetchJson(f"/happ_thermstat?action=setSetpoint&Setpoint={setpoint}")
             UpdateDevice(setTemp, 0, str(Level))
+            # Scene bijwerken op basis van setpoint
             self.updateSceneFromSetpoint(Level)
 
         elif Unit == scene:
@@ -168,7 +166,7 @@ class BasePlugin:
             newState = state_map.get(scene_level, None)
             if newState is not None:
                 self.fetchJson(f"/happ_thermstat?action=changeSchemeState&state=2&temperatureState={newState}")
-                Domoticz.Debug(f"Scene {scene_level} ingesteld op Toon met state {newState}")
+                Domoticz.Debug(f"Scene {scene_level} aangepast op Toon")
 
             current_scene_val = int(Devices[scene].sValue) if scene in Devices else None
             if current_scene_val != scene_level:
@@ -177,19 +175,20 @@ class BasePlugin:
     # --- Heartbeat ---
     def onHeartbeat(self):
         Domoticz.Debug("onHeartbeat called")
-        
+
         data = self.fetchJson("/happ_thermstat?action=getThermostatInfo")
         if data:
             self.updateThermostatDevices(data)
+
         data = self.fetchJson("/boilerstatus/boilervalues.txt")
         if data:
             self.updateBoilerDevices(data)
+
         if self.useZwave:
             zw = self.fetchJson("/hdrv_zwave?action=getDevices.json")
             if zw:
                 self.updateZwaveDevices(zw)
 
-        # Scene update volgens Mode1 interval
         self.sceneCounter += int(Parameters['Mode2'])
         if self.sceneCounter >= int(Parameters['Mode1']):
             self.fetchScenes()
@@ -216,14 +215,13 @@ class BasePlugin:
                 temp = float(s['tempValue'][0]) / 100
                 if id_ <= 3:
                     self.scene_map[str(self.idToScene(id_))] = temp
-            Domoticz.Debug(f"Scenes fetched from Toon: {list(self.scene_map.values())}")
+            Domoticz.Debug(f"Scenes fetched from Toon: {self.scene_map}")
 
-            # Active scene meteen bijwerken in Domoticz
             toon_scene = self.getActiveSceneFromToon()
             if toon_scene is not None:
                 current_scene_val = int(Devices[scene].sValue) if scene in Devices else None
                 if current_scene_val != toon_scene:
-                    Domoticz.Debug(f"Toon scene gewijzigd ? update Domoticz naar {toon_scene}")
+                    Domoticz.Debug(f"Toon scene aangepast in Domoticz naar {toon_scene}")
                     UpdateDevice(scene, 0, str(toon_scene))
 
     def idToScene(self, id_):
@@ -236,7 +234,7 @@ class BasePlugin:
             try:
                 toon_state = int(data["state"])
                 scene_level = self.idToScene(toon_state)
-                Domoticz.Debug(f"Actieve Toon scene: {toon_state} -> {scene_level}")
+                Domoticz.Debug(f"Actieve Toon scene: {scene_level}")
                 return scene_level
             except:
                 pass
@@ -258,27 +256,30 @@ class BasePlugin:
                 newState = state_map.get(matched_scene_id, None)
                 if newState is not None:
                     self.fetchJson(f"/happ_thermstat?action=changeSchemeState&state=2&temperatureState={newState}")
-                    Domoticz.Debug(f"Scene {matched_scene_id} ingesteld op Toon met state {newState}")
+                    Domoticz.Debug(f"Scene {matched_scene_id} aangepast op Toon")
         else:
             if current_scene_val != 50:
-                UpdateDevice(scene, 50, "50")  # Geen match
+                UpdateDevice(scene, 50, "50")
 
-    # --- Updates ---
     def updateThermostatDevices(self, Response):
         if 'currentTemp' in Response:
             UpdateDevice(curTemp, 0, "%.1f" % (float(Response['currentTemp']) / 100))
         if 'currentSetpoint' in Response:
             setpoint = float(Response['currentSetpoint']) / 100
             UpdateDevice(setTemp, 0, "%.1f" % setpoint)
+
             toon_scene = self.getActiveSceneFromToon()
             if toon_scene is not None:
                 current_scene_val = int(Devices[scene].sValue) if scene in Devices else None
                 if current_scene_val != toon_scene:
-                    Domoticz.Debug(f"Toon scene gewijzigd ? update Domoticz naar {toon_scene}")
                     UpdateDevice(scene, 0, str(toon_scene))
+                    Domoticz.Debug(f"Scene aangepast naar {toon_scene} (Domoticz)")
 
-            # --- update scene automatisch op basis van setpoint ---
+            # Update scene op basis van setpoint
             self.updateSceneFromSetpoint(setpoint)
+
+            # --- ProgramInfo ---
+            self.updateProgramInfo(Response)
 
         if 'programState' in Response:
             UpdateDevice(autoProgram, 0, programStates[int(Response['programState'])])
@@ -288,6 +289,24 @@ class BasePlugin:
             UpdateDevice(boilerModulation, 0, int(Response['currentModulationLevel']))
         if 'currentInternalBoilerSetpoint' in Response:
             UpdateDevice(boilerSetPoint, 0, float(Response['currentInternalBoilerSetpoint']))
+
+    def updateProgramInfo(self, Response):
+        # Alleen als Response voldoende data bevat
+        if all(k in Response for k in ("nextProgram","nextSetpoint","nextTime","nextState")):
+            nextProgram = int(Response["nextProgram"])
+            if nextProgram == -1:
+                strInfo = "No program scheduled"
+            elif nextProgram == 0:
+                strInfo = "Program is off"
+            else:
+                dt = datetime.fromtimestamp(int(Response["nextTime"]))
+                strNextTime = dt.strftime("%Y-%d-%m %H:%M:%S")
+                strNextProgram = strPrograms[int(Response["nextState"])]
+                strNextSetpoint = "%.1f" % (float(Response["nextSetpoint"])/100)
+                strInfo = f"Next program {strNextProgram} ({strNextSetpoint} C) at {strNextTime}"
+
+            UpdateDevice(Unit=programInfo, nValue=0, sValue=strInfo)
+            Domoticz.Debug(f"ProgramInfo bijgewerkt: {strInfo}")
 
     def updateBoilerDevices(self, Response):
         if 'boilerPressure' in Response:
@@ -325,14 +344,10 @@ class BasePlugin:
                 zwaveReceivedLtQ = info.get('CurrentElectricityQuantity', '0')
 
         try:
-            if zwaveDeliveredNtFlow == 'NaN': zwaveDeliveredNtFlow = '0'
-            if zwaveDeliveredLtFlow == 'NaN': zwaveDeliveredLtFlow = '0'
             zwaveDeliveredFlow = str(int(float(zwaveDeliveredNtFlow)) + int(float(zwaveDeliveredLtFlow)))
             zwaveDeliveredQ = str(int(float(zwaveDeliveredNtQ)) + int(float(zwaveDeliveredLtQ)))
             UpdateDevice(Unit=electricity, nValue=0, sValue=zwaveDeliveredFlow + ";" + zwaveDeliveredQ)
 
-            if zwaveReceivedNtFlow == 'NaN': zwaveReceivedNtFlow = '0'
-            if zwaveReceivedLtFlow == 'NaN': zwaveReceivedLtFlow = '0'
             zwaveReceivedFlow = str(int(float(zwaveReceivedNtFlow)) + int(float(zwaveReceivedLtFlow)))
             zwaveReceivedQ = str(int(float(zwaveReceivedNtQ)) + int(float(zwaveReceivedLtQ)))
             UpdateDevice(Unit=genElectricity, nValue=0, sValue=zwaveReceivedFlow + ";" + zwaveReceivedQ)
@@ -371,7 +386,7 @@ def UpdateDevice(Unit, nValue, sValue, TimedOut=0):
         if Unit in Devices:
             if (Devices[Unit].nValue != nValue) or (Devices[Unit].sValue != str(sValue)):
                 Devices[Unit].Update(nValue=nValue, sValue=str(sValue), TimedOut=TimedOut)
-                Domoticz.Debug(f"Update {nValue}:'{sValue}' ({Devices[Unit].Name})")
+                Domoticz.Debug(f"[Update] {Devices[Unit].Name}: {nValue} -> '{sValue}'")
     except Exception as e:
         Domoticz.Log(f"Update of device {Unit} failed: {e}")
     return
