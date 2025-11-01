@@ -47,10 +47,10 @@ For example:
 You can fill in these numbers in the user defined field seperated by ;
 
 ### Configuration menu
-<img width="1075" height="697" alt="image" src="https://github.com/user-attachments/assets/07db1af3-d88e-42e0-9a1e-76021fe03f95" />
-
+<img width="1071" height="624" alt="image" src="https://github.com/user-attachments/assets/54d0739f-9640-4805-b80f-0449b9631667" />
 
 ### installed devices
-<img width="1085" height="621" alt="image" src="https://github.com/user-attachments/assets/333406c0-68aa-4a0d-bd1d-022f86e037c1" />
+<img width="1234" height="620" alt="image" src="https://github.com/user-attachments/assets/0bacf665-80a5-4b56-9bfc-918ffdda77dc" />
+
 
 
