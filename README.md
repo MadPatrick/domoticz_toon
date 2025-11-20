@@ -1,94 +1,64 @@
-# domoticz-rooted-toon 🏠🌡️
+### 📥 Install plugin
 
-Een Python-plugin voor Domoticz om te communiceren met een **geroote Toon-thermostaat**.
+1. Go in your Domoticz directory using a command line and open the plugins directory:  
+   ```cd domoticz/plugins```
 
-Deze plugin biedt volledige controle over setpoints en programmasynchronisatie, plus uitgebreide monitoring van energiegegevens (via de P1-poort of Z-Wave) en ketelstatus.
+2. Clone the plugin:  
+   ```git clone https://github.com/MadPatrick/domoticz_toon```
 
-## 📥 Installatie
+3. Restart Domoticz:  
+   ```sudo systemctl restart domoticz```
 
-Volg deze stappen om de plugin te installeren in je Domoticz-omgeving.
+ ---
 
-1.  Ga naar de `plugins` map in je Domoticz-directory:
-    ```bash
-    cd domoticz/plugins
-    ```
-2.  Kloon de repository:
-    ```bash
-    git clone [https://github.com/MadPatrick/domoticz_toon](https://github.com/MadPatrick/domoticz_toon)
-    ```
-3.  **Herstart** Domoticz om de plugin te activeren:
-    ```bash
-    sudo systemctl restart domoticz
-    ```
+### ⚙️ Currently the following functionality is available:
 
----
-
-## ⚙️ Overzicht van Functionaliteit
-
-De plugin biedt **bidirectionele synchronisatie** en uitgebreide monitoring:
-
-### Thermostaat & Programma's
-* **Kamertemperatuur** 🌡️: Weergave van de huidige temperatuur.
-* **Setpunt** (Lezen & Schrijven): Instellen en uitlezen van de gewenste temperatuur.
-* **Scène Synchronisatie**: Automatische synchronisatie tussen het setpunt en de Toon Scènes:
-    * **Weg / Slapen / Thuis / Comfort / Manual**
-* **Programmastatus**: Weergave van de automatische programmamodus:
-    * **Uit / Aan / Tijdelijk**
-* **Programma-Info**: Gedetailleerde informatie over het volgende geplande programma (tijd, setpunt en status).
-
-### Ketel & Verwarming
-* **Ketelstatus**: Weergave van de huidige branderactiviteit:
-    * **Uit / CV** (Centrale Verwarming) / **WW** (Warm Water)
-* **Keteldruk**
-* **Modulatiepercentage** (Ketel)
-* **Intern Ketel Setpunt**
-
-### Energie Monitoring (P1 / Z-Wave)
-* **Gasverbruik** (Z-Wave / P1-poort).
-* **Elektriciteitsverbruik**: Geleverd (normaal en laag tarief).
-* **Elektriciteitsproductie**: Opwekt (normaal en laag tarief, voor bijv. zonnepanelen).
-* **Gecombineerde P1 Meter**: Een Domoticz-apparaat dat alle tarieven en flows combineert.
-
-### Systeem & Compatibiliteit
-* Ondersteuning voor Toon-versies **v1, v2 en door de gebruiker gedefinieerde** Z-Wave/P1-adresmappings.
-* **Automatische Cooldown**: Activeert een pauze in het ophalen van data wanneer de Toon onbereikbaar is. Dit voorkomt overbelasting en Domoticz foutmeldingen.
+-   Room Temperature  
+-   Setpoint (read & write)  
+-   Synchronisation between Setpoint and Toon Scenes  
+-   Toon Scenes (Weg / Slapen / Thuis / Comfort / Manual)  
+-   Toon Programs (Uit / Aan / Tijdelijk)  
+-   Program state synchronisation  
+-   Toon Program information (next program, time, setpoint, state)  
+-   Toon Boiler status (Uit / CV / WW)  
+-   Boiler pressure  
+-   Boiler modulation percentage  
+-   Boiler internal setpoint  
+-   Gas consumption (Z-Wave / P1)  
+-   Power consumption (delivered normal / delivered low)  
+-   Power production (solar / received normal / received low)  
+-   Combined P1 electricity meter  
+-   Support for Toon v1, v2 and user-defined Z-Wave address mappings  
+-   Automatic cooldown when Toon is unreachable (prevents Domoticz error spam)
 
 ---
 
-## 🔌 P1 / Z-Wave Adres Configuratie (Expert)
+**⚠️ Use at your own risk.**
+The P1 values are predefined for most common Toons.  
+It is possible that your Toon uses different values.  
+You can check this using the JSON link:
 
-**⚠️ Gebruik op Eigen Risico:** De interne adressen van de Z-Wave/P1-apparaten kunnen verschillen per Toon-versie en installatie.
+http://TOON_IP/hdrv_zwave?action=getDevices.json
 
-De plugin biedt standaardmappings voor Toon v1 en v2. Als deze niet werken, moet je mogelijk handmatig de adressen opgeven:
+ 
+Unfortunately, there is no clear information in the JSON that identifies which device each internal address belongs to.  
+Different Toons may also use different structures (e.g., dev_2.x or dev_3.x).  
+So it often requires some trial and error.
 
-1.  **Vind de Adressen**: Open de JSON-link in je browser om de actuele interne adressen te zien:
-    ```
-    http://<TOON_IP>/hdrv_zwave?action=getDevices.json
-    ```
-2.  **Identificatie**: Zoek in de JSON-output naar de Z-Wave apparaten (*bv. dev\_2.1, dev\_2.4, dev\_3.1*) en identificeer welke waarden ze bevatten (bijv. `CurrentElectricityFlow`, `CurrentGasQuantity`). Verschillende Toons kunnen de structuur `dev_2.x` of `dev_3.x` gebruiken.
+For example:<br>
+You can see at *dev_2.4* values in the fields **CurrentElectricityFlow** and **CurrentElectricityQuantity**.  
+The correct P1 sequence is:
 
-    **Voorbeeld van een elektriciteitsmeter:**
-    Als `dev_2.4` waarden in de velden `CurrentElectricityFlow` en `CurrentElectricityQuantity` bevat, is dit waarschijnlijk een van de elektriciteitsmeters.
+```Gas ; elec_delivered_normal ; elec_delivered_low ; elec_received_normal ; elec_received_low```
 
-    ![image](https://user-images.githubusercontent.com/81873830/214092186-e73b1482-96ec-4488-b056-1754836a0d1b.png)
+![image](https://user-images.githubusercontent.com/81873830/214092186-e73b1482-96ec-4488-b056-1754836a0d1b.png)
 
-3.  **Adresreeks**: Voer de interne adressen in de plugin-configuratie in de volgende verplichte volgorde in, gescheiden door een puntkomma (**;**):
-
-    ```
-    Gas ; Geleverd_Normaal ; Geleverd_Laag ; Ontvangen_Normaal ; Ontvangen_Laag
-    ```
-    *Bijvoorbeeld: `2.1;2.4;2.6;2.5;2.7`*
+You can fill in these numbers in the user-defined P1 address field, separated by a semicolon (`;`).
 
 ---
 
-## 📟 Configuratiemenu in Domoticz
+### 📟 Configuration menu
+<img width="1079" height="616" alt="image" src="https://github.com/user-attachments/assets/005c0ddd-ba8c-4a7b-9347-783454adae42" />
 
-Configureer de verbindingsgegevens en het Z-Wave/P1-gedrag van de plugin via het Domoticz-menu.
-
-
-
----
-
-## 📲 Geïnstalleerde Domoticz Apparaten
-
-Een overzicht van de apparaten die door de plugin in Domoticz worden aangemaakt.
+### 📲 Installed devices
+![image](https://user-images.githubusercontent.com/81873830/210851429-d6085416-cc71-4519-8603-94d8226793e3.png)
