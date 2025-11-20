@@ -1,10 +1,10 @@
 # Toon Plugin for Domoticz
 
 """
-<plugin key="RootedToonPlug" name="Toon Rooted" author="MadPatrick" version="2.5.0" externallink="https://github.com/MadPatrick/domoticz_toon">
+<plugin key="RootedToonPlug" name="Toon Rooted" author="MadPatrick" version="2.5.1" externallink="https://github.com/MadPatrick/domoticz_toon">
     <description>
         <br/><h2>Domoticz Plugin for Toon (Rooted)</h2><br/>
-        version: 2.5.0
+        version: 2.5.1
         <br/>Control and synchronization of Scenes, Programs and Setpoints between Domoticz and Toon.
     </description>
     <params>
@@ -49,6 +49,7 @@
 import Domoticz
 import requests
 from datetime import datetime
+from time import time   # <-- toegevoegd voor cooldown timing
 
 # --- Constants and device definitions ---
 programStates = ['10','20','30']
@@ -88,6 +89,10 @@ class BasePlugin:
         self.ia_ernt = ''
         self.ia_erlt = ''
         self.sceneCounter = 0
+
+        # --- cooldown variabelen ---
+        self.errorCooldown = 0       # aantal seconden dat we pauzeren
+        self.lastErrorTime = None    # timestamp van laatste error
 
     def onStart(self):
         Domoticz.Log(f"Starting version {Parameters['Version']}")
@@ -163,17 +168,43 @@ class BasePlugin:
             if current_scene_val != scene_level:
                 UpdateDevice(scene, 0, str(scene_level))
 
+    def startCooldown(self, seconds=300):
+        """
+        Start een cooldownperiode waarin onHeartbeat niks ophaalt.
+        Default 300s = 5 minuten.
+        """
+        self.errorCooldown = seconds
+        self.lastErrorTime = time()
+        Domoticz.Log(f"Toon: fout gedetecteerd, cooldown geactiveerd voor {seconds} seconden.")
+
     def onHeartbeat(self):
+        # --- Cooldown check ---
+        if self.lastErrorTime and self.errorCooldown > 0:
+            elapsed = time() - self.lastErrorTime
+            if elapsed < self.errorCooldown:
+                # Nog in wachttijd -> heartbeat wordt overgeslagen
+                Domoticz.Debug(f"Toon: in cooldown ({int(self.errorCooldown - elapsed)}s resterend), heartbeat overgeslagen.")
+                return
+            else:
+                # Cooldown voorbij -> reset
+                Domoticz.Log("Toon: cooldown afgelopen, probeer weer verbinding te maken.")
+                self.errorCooldown = 0
+                self.lastErrorTime = None
+
         data = self.fetchJson("/happ_thermstat?action=getThermostatInfo")
         if data:
             self.updateThermostatDevices(data)
-        data = self.fetchJson("/boilerstatus/boilervalues.txt")
+
+        # TEXT fetch for boiler
+        data = self.fetchText("/boilerstatus/boilervalues.txt")
         if data:
             self.updateBoilerDevices(data)
+
         if self.useZwave:
             zw = self.fetchJson("/hdrv_zwave?action=getDevices.json")
             if zw:
                 self.updateZwaveDevices(zw)
+
         self.sceneCounter += int(Parameters['Mode2'])
         if self.sceneCounter >= int(Parameters['Mode1']):
             self.fetchScenes()
@@ -187,6 +218,20 @@ class BasePlugin:
             return r.json()
         except Exception as e:
             Domoticz.Log(f"Error fetching {path}: {e}")
+            # Start cooldown bij fout
+            self.startCooldown()
+            return None
+
+    def fetchText(self, path):
+        try:
+            url = f"http://{Parameters['Address']}:{Parameters['Port']}{path}"
+            r = requests.get(url, timeout=10)
+            r.raise_for_status()
+            return r.text
+        except Exception as e:
+            Domoticz.Log(f"Error fetching {path}: {e}")
+            # Start cooldown bij fout
+            self.startCooldown()
             return None
 
     def fetchScenes(self):
@@ -275,8 +320,15 @@ class BasePlugin:
                 Domoticz.Debug(f"ProgramInfo bijgewerkt: {strInfo}")
 
     def updateBoilerDevices(self, Response):
-        if 'boilerPressure' in Response:
-            UpdateDevice(boilerPressure, 0, float(Response['boilerPressure']))
+        lines = Response.splitlines()
+        kv = {}
+        for line in lines:
+            if '=' in line:
+                k, v = line.split('=', 1)
+                kv[k.strip()] = v.strip()
+
+        if 'boilerPressure' in kv:
+            UpdateDevice(boilerPressure, 0, float(kv['boilerPressure']))
 
     def updateZwaveDevices(self, Response):
         zwaveDeliveredNtFlow = '0'
@@ -371,8 +423,14 @@ def UpdateDevice(Unit, nValue, sValue, TimedOut=0):
 
                 dev.Update(nValue=nValue, sValue=str(sValue), TimedOut=TimedOut)
 
-                # Geen gewone log voor energie
-                silent_units = [gas, electricity, genElectricity, p1electricity]
+                silent_units = [
+                    gas, electricity, genElectricity, p1electricity,
+                    boilerSetPoint,
+                    curTemp,
+                    boilerModulation,
+                    boilerPressure
+                ]
+
                 if Unit not in silent_units:
                     Domoticz.Log(f"[Update] {dev.Name}: {readable_old} -> '{readable_new}'")
 
