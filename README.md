@@ -1,4 +1,8 @@
 # domoticz-rooted-toon 🏠🌡️
+![Status](https://img.shields.io/badge/Status-Stable-brightgreen)
+![Domoticz](https://img.shields.io/badge/Domoticz-2022%2B-blue)
+![Python](https://img.shields.io/badge/Python-3.7+-yellow)
+![License](https://img.shields.io/badge/License-MIT-lightgrey)
 
 A Python plugin to interface Domoticz with a **rooted Toon thermostat**.
 
