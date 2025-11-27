@@ -1,7 +1,7 @@
 # Toon Plugin for Domoticz
 
 """
-<plugin key="RootedToonPlug" name="Toon Rooted" author="MadPatrick" version="2.5.1" externallink="https://github.com/MadPatrick/domoticz_toon">
+<plugin key="RootedToonPlug" name="Toon Rooted" author="MadPatrick" version="2.5.2" externallink="https://github.com/MadPatrick/domoticz_toon">
     <description>
         <br/><h2>Domoticz Plugin for Toon (Rooted)</h2><br/>
         version: 2.5.1
@@ -49,7 +49,7 @@
 import Domoticz
 import requests
 from datetime import datetime
-from time import time   # <-- toegevoegd voor cooldown timing
+from time import time   # cooldown timing
 
 # --- Constants and device definitions ---
 programStates = ['10','20','30']
@@ -79,6 +79,20 @@ zwaveAdress = {
     "user": ["3.1", "3.4", "3.6", "3.5", "3.7"]
 }
 
+# --- nette foutmeldingen ---
+def cleanError(e):
+    msg = str(e).lower()
+    if "refused" in msg:
+        return "Verbinding geweigerd"
+    if "timeout" in msg:
+        return "Timeout"
+    if "max retries" in msg:
+        return "Max retries bereikt"
+    if "not found" in msg:
+        return "Niet gevonden"
+    return msg.split('(')[0].strip()
+
+
 class BasePlugin:
     def __init__(self):
         self.useZwave = False
@@ -90,16 +104,16 @@ class BasePlugin:
         self.ia_erlt = ''
         self.sceneCounter = 0
 
-        # --- cooldown variabelen ---
-        self.errorCooldown = 0       # aantal seconden dat we pauzeren
-        self.lastErrorTime = None    # timestamp van laatste error
+        # cooldown variabelen
+        self.errorCooldown = 0
+        self.lastErrorTime = None
 
     def onStart(self):
         Domoticz.Log(f"Starting version {Parameters['Version']}")
         if Parameters["Mode3"] == "Yes":
             self.useZwave = True
 
-        # Create devices if not exist
+        # --- Devices aanmaken als ze niet bestaan ---
         if curTemp not in Devices:
             Domoticz.Device(Name="Temperatuur", Unit=curTemp, TypeName="Temperature", Used=1).Create()
         if setTemp not in Devices:
@@ -175,7 +189,7 @@ class BasePlugin:
         """
         self.errorCooldown = seconds
         self.lastErrorTime = time()
-        Domoticz.Log(f"Toon: fout gedetecteerd, cooldown geactiveerd voor {seconds} seconden.")
+        Domoticz.Log(f"Fout gedetecteerd, cooldown geactiveerd voor {seconds} seconden.")
 
     def onHeartbeat(self):
         # --- Cooldown check ---
@@ -183,7 +197,7 @@ class BasePlugin:
             elapsed = time() - self.lastErrorTime
             if elapsed < self.errorCooldown:
                 # Nog in wachttijd -> heartbeat wordt overgeslagen
-                Domoticz.Debug(f"Toon: in cooldown ({int(self.errorCooldown - elapsed)}s resterend), heartbeat overgeslagen.")
+                Domoticz.Debug(f"In cooldown ({int(self.errorCooldown - elapsed)}s resterend), heartbeat overgeslagen.")
                 return
             else:
                 # Cooldown voorbij -> reset
@@ -210,6 +224,7 @@ class BasePlugin:
             self.fetchScenes()
             self.sceneCounter = 0
 
+    # --- Fetch functies met nette logging ---
     def fetchJson(self, path):
         try:
             url = f"http://{Parameters['Address']}:{Parameters['Port']}{path}"
@@ -217,8 +232,7 @@ class BasePlugin:
             r.raise_for_status()
             return r.json()
         except Exception as e:
-            Domoticz.Log(f"Error fetching {path}: {e}")
-            # Start cooldown bij fout
+            Domoticz.Log(f"Kan '{path}' niet ophalen: {cleanError(e)}. Cooldown 300s.")
             self.startCooldown()
             return None
 
@@ -229,11 +243,11 @@ class BasePlugin:
             r.raise_for_status()
             return r.text
         except Exception as e:
-            Domoticz.Log(f"Error fetching {path}: {e}")
-            # Start cooldown bij fout
+            Domoticz.Log(f"Kan '{path}' niet ophalen: {cleanError(e)}. Cooldown 300s.")
             self.startCooldown()
             return None
 
+    # --- Scenes ophalen ---
     def fetchScenes(self):
         data = self.fetchJson("/hcb_config?action=getObjectConfigTree&package=happ_thermstat&internalAddress=thermostatStates")
         if data and 'states' in data and len(data['states']) > 0:
@@ -280,6 +294,7 @@ class BasePlugin:
         elif matched_scene_id is None and current_scene_val != 50:
             UpdateDevice(scene, 50, "50")
 
+    # --- Devices bijwerken ---
     def updateThermostatDevices(self, Response):
         if 'currentTemp' in Response:
             UpdateDevice(curTemp, 0, "%.1f" % (float(Response['currentTemp']) / 100))
@@ -330,6 +345,7 @@ class BasePlugin:
         if 'boilerPressure' in kv:
             UpdateDevice(boilerPressure, 0, float(kv['boilerPressure']))
 
+    # --- Zwave bijwerken ---
     def updateZwaveDevices(self, Response):
         zwaveDeliveredNtFlow = '0'
         zwaveDeliveredLtFlow = '0'
@@ -375,6 +391,7 @@ class BasePlugin:
             ))
         except Exception as e:
             Domoticz.Log(f"Error processing P1 values: {e}")
+
 
 # --- Global instance ---
 global _plugin
@@ -437,4 +454,3 @@ def UpdateDevice(Unit, nValue, sValue, TimedOut=0):
                 Domoticz.Debug(f"[Update] {dev.Name}: {readable_old} -> '{readable_new}'")
     except Exception as e:
         Domoticz.Log(f"Update of device {Unit} failed: {e}")
-    return
