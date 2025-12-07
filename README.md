@@ -18,7 +18,7 @@ Follow these steps to install the plugin in your Domoticz environment.
     ```
 2.  Clone the repository:
     ```bash
-    git clone https://github.com/MadPatrick/domoticz_toon
+    git clone https://github.com/MadPatrick/domoticz_toon toon
     ```
 3.  **Restart** Domoticz to load the plugin:
     ```bash
