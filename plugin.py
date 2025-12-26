@@ -109,7 +109,7 @@ class BasePlugin:
         self.lastErrorTime = None
 
     def onStart(self):
-        Domoticz.Log(f"Starting version {Parameters['Version']}")
+        Domoticz.Log(f"Starting Plugin version {Parameters['Version']}")
         if Parameters["Mode3"] == "Yes":
             self.useZwave = True
 
