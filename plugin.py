@@ -1,10 +1,10 @@
 # Toon Plugin for Domoticz
 
 """
-<plugin key="RootedToonPlug" name="Toon Rooted" author="MadPatrick" version="2.5.2" externallink="https://github.com/MadPatrick/domoticz_toon">
+<plugin key="RootedToonPlug" name="Toon Rooted" author="MadPatrick" version="2.5.3" externallink="https://github.com/MadPatrick/domoticz_toon">
     <description>
-        <br/><h2>Domoticz Plugin for Toon (Rooted)</h2><br/>
-        version: 2.5.2
+        <br/><h2>Domoticz Plugin for Toon (Rooted)</h2>
+        <br/>Version: 2.5.3
         <br/>Control and synchronization of Scenes, Programs and Setpoints between Domoticz and Toon.
     </description>
     <params>
@@ -28,15 +28,15 @@
                 <option label="No" value="No" default="true"/>
             </options>
         </param>
-        <param field="Mode5" label="P1 adresses" width="150px" default="2.1;2.4;2.6;2.5;2.7"/>
-        <param field="Mode6" label="Toon version" width="150px" required="true">
+        <param field="Mode4" label="Toon version" width="150px" required="true">
             <options>
                 <option label="v1" value="v1"/>
                 <option label="v2" value="v2" default="true" />
                 <option label="user defined" value="user"/>
             </options>
         </param>
-        <param field="Mode4" label="Debug logging" width="150px">
+        <param field="Mode5" label="P1 adresses" width="150px" default="2.1;2.4;2.6;2.5;2.7"/>
+        <param field="Mode6" label="Debug logging" width="150px">
             <options>
                 <option label="True" value="Debug"/>
                 <option label="False" value="Normal" default="true"/>
@@ -146,12 +146,12 @@ class BasePlugin:
             if p1electricity not in Devices:
                 Domoticz.Device(Name="P1 Electriciteit", Unit=p1electricity, Type=250, Subtype=1, Used=0).Create()
 
-        if Parameters["Mode4"] == "Debug":
+        if Parameters["Mode6"] == "Debug":
             Domoticz.Debugging(2)
             DumpConfigToLog()
 
         if self.useZwave:
-            paramList = zwaveAdress.get(Parameters["Mode6"], [])
+            paramList = zwaveAdress.get(Parameters["Mode4"], [])
             if len(paramList) == 5:
                 self.ia_gas, self.ia_ednt, self.ia_edlt, self.ia_ernt, self.ia_erlt = paramList
 
@@ -449,8 +449,8 @@ def UpdateDevice(Unit, nValue, sValue, TimedOut=0):
                 ]
 
                 if Unit not in silent_units:
-                    Domoticz.Log(f"[Update] {dev.Name}: {readable_old} -> '{readable_new}'")
+                    Domoticz.Log(f"{dev.Name}: {readable_old} -> '{readable_new}'")
 
-                Domoticz.Debug(f"[Update] {dev.Name}: {readable_old} -> '{readable_new}'")
+                Domoticz.Debug(f"{dev.Name}: {readable_old} -> '{readable_new}'")
     except Exception as e:
         Domoticz.Log(f"Update of device {Unit} failed: {e}")
