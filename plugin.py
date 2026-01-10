@@ -48,6 +48,7 @@
 
 import Domoticz
 import requests
+import json
 from datetime import datetime
 from time import time   # cooldown timing
 
@@ -335,15 +336,16 @@ class BasePlugin:
                 Domoticz.Debug(f"ProgramInfo bijgewerkt: {strInfo}")
 
     def updateBoilerDevices(self, Response):
-        lines = Response.splitlines()
-        kv = {}
-        for line in lines:
-            if '=' in line:
-                k, v = line.split('=', 1)
-                kv[k.strip()] = v.strip()
-
-        if 'boilerPressure' in kv:
-            UpdateDevice(boilerPressure, 0, float(kv['boilerPressure']))
+        try:
+            data = json.loads(Response)
+            if 'boilerPressure' in data:
+                UpdateDevice(boilerPressure, 0, float(data['boilerPressure']))
+            if 'boilerSetpoint' in data:
+                UpdateDevice(boilerSetPoint, 0, float(data['boilerSetpoint']))
+            if 'boilerModulationLevel' in data:
+                UpdateDevice(boilerModulation, 0, int(data['boilerModulationLevel']))
+        except Exception as e:
+            Domoticz.Log(f"Fout bij verwerken boiler JSON: {e}")
 
     # --- Zwave bijwerken ---
     def updateZwaveDevices(self, Response):
