@@ -1,9 +1,9 @@
 # Toon Plugin for Domoticz
 """
-<plugin key="RootedToonPlug" name="Toon Rooted" author="MadPatrick" version="2.6.1" externallink="https://github.com/MadPatrick/domoticz_toon">
+<plugin key="RootedToonPlug" name="Toon Rooted" author="MadPatrick" version="2.6.2" externallink="https://github.com/MadPatrick/domoticz_toon">
     <description>
         <br/><h2>Domoticz Plugin for Toon (Rooted)</h2>
-        <br/>Version: 2.6.1
+        <br/>Version: 2.6.2
         <br/>Control and synchronization of Scenes, Programs and Setpoints between Domoticz and Toon.
     </description>
     <params>
@@ -61,11 +61,9 @@ import json
 from datetime import datetime
 from time import time
 
-# --- Constants and device definitions ---
+# --- Constants ---
 programStates = ['10','20','30']
-strProgramStates = ['Uit', 'Aan', 'Tijdelijk']
 burnerInfos = ['10','20','30']
-strBurnerInfos = ['Uit', 'CV', 'WW']
 strPrograms = ['Weg', 'Slapen', 'Thuis', 'Comfort','Manual']
 
 # Device unit numbers
@@ -83,25 +81,30 @@ boilerState = 11
 boilerModulation = 12
 boilerSetPoint = 13
 
-zwaveAdress = {
-    "v1": ["2.1", "2.3", "2.5", "2.4", "2.6"],
-    "v2": ["4.1", "4.4", "4.6", "4.5", "4.7"],
-    "user": ["3.1", "3.4", "3.6", "3.5", "3.7"]
-}
-
-# --- nette foutmeldingen ---
+# --- Helper functions ---
 def cleanError(e):
     msg = str(e).lower()
-    if "refused" in msg:
-        return "Verbinding geweigerd"
-    if "timeout" in msg:
-        return "Timeout"
-    if "max retries" in msg:
-        return "Max retries bereikt"
-    if "not found" in msg:
-        return "Niet gevonden"
+    if "refused" in msg: return "Verbinding geweigerd"
+    if "timeout" in msg: return "Timeout"
+    if "max retries" in msg: return "Max retries bereikt"
+    if "not found" in msg: return "Niet gevonden"
     return msg.split('(')[0].strip()
 
+def SafeInt(value):
+    try: return int(value)
+    except (ValueError, TypeError): return None
+
+def UpdateDevice(Unit, nValue, sValue, TimedOut=0):
+    try:
+        if Unit in Devices:
+            dev = Devices[Unit]
+            if dev.nValue != nValue or dev.sValue != str(sValue):
+                dev.Update(nValue=nValue, sValue=str(sValue), TimedOut=TimedOut)
+                Domoticz.Debug(f"{dev.Name}: {dev.sValue}")
+    except Exception as e:
+        Domoticz.Log(f"Update of device {Unit} failed: {e}")
+
+# --- BasePlugin class ---
 class BasePlugin:
     def __init__(self):
         self.useZwave = False
@@ -115,49 +118,28 @@ class BasePlugin:
         self.errorCooldown = 0
         self.lastErrorTime = None
 
-    def onStart(self):
-        Domoticz.Log(f"Plugin started, version {Parameters['Version']}")
-        if Parameters["Mode3"] == "Yes":
-            self.useZwave = True
-            Domoticz.Log("P1-data will be used (Mode3=Yes)")
+    # --- Device helper ---
+    def createDeviceIfNotExists(self, unit, name, typeName=None, type_=None, subtype=None, options=None, used=1):
+        if unit not in Devices:
+            if options:
+                Domoticz.Device(Name=name, Unit=unit, TypeName=typeName, Options=options, Used=used).Create()
+            elif type_ is not None:
+                Domoticz.Device(Name=name, Unit=unit, Type=type_, Subtype=subtype or 0, Used=used).Create()
+            else:
+                Domoticz.Device(Name=name, Unit=unit, TypeName=typeName, Used=used).Create()
+            Domoticz.Log(f"Device '{name}' created")
 
-        # --- Devices aanmaken ---
-        if curTemp not in Devices:
-            Domoticz.Device(Name="Temperatuur", Unit=curTemp, TypeName="Temperature", Used=1).Create()
-            Domoticz.Log("Device : 'Temperatuur' created")
-        if setTemp not in Devices:
-            Domoticz.Device(Name="Setpunt Temperatuur", Unit=setTemp, Type=242, Subtype=1, Used=1).Create()
-            Domoticz.Log("Device : 'Setpunt Temperatuur' created")
-        if autoProgram not in Devices:
-            options = {"LevelActions": "||", "LevelNames": "|Uit|Aan|Tijdelijk", "LevelOffHidden": "true", "SelectorStyle": "0"}
-            Domoticz.Device(Name="Auto Program", Unit=autoProgram, TypeName="Selector Switch", Options=options, Used=1).Create()
-            Domoticz.Log("Device : 'Auto Program' created")
-        if scene not in Devices:
-            options = {"LevelActions": "||||", "LevelNames": "|Weg|Slapen|Thuis|Comfort|Manual", "LevelOffHidden": "true", "SelectorStyle": "0"}
-            Domoticz.Device(Name="Scene", Unit=scene, TypeName="Selector Switch", Options=options, Used=1).Create()
-            Domoticz.Log("Device : 'Scene' created")
-        if boilerPressure not in Devices:
-            Domoticz.Device(Name="Keteldruk", Unit=boilerPressure, TypeName="Pressure", Used=1).Create()
-            Domoticz.Log("Device : 'Keteldruk' created")
-        if boilerState not in Devices:
-            options = {"LevelActions": "||", "LevelNames": "|Uit|CV|WW", "LevelOffHidden": "true", "SelectorStyle": "0"}
-            Domoticz.Device(Name="Ketelmode", Unit=boilerState, TypeName="Selector Switch", Options=options, Used=1).Create()
-            Domoticz.Log("Device : 'Ketelmode' created")
-        if boilerModulation not in Devices:
-            Domoticz.Device(Name="Ketel modulatie", Unit=boilerModulation, Type=243, Subtype=6, Used=1).Create()
-            Domoticz.Log("Device : 'Ketel modulatie' created")
-        if boilerSetPoint not in Devices:
-            Domoticz.Device(Name="Ketel setpoint", Unit=boilerSetPoint, Type=80, Subtype=5, Used=0).Create()
-            Domoticz.Log("Device : 'Ketel setpoint' created")
-        if programInfo not in Devices:
-            Domoticz.Device(Name="ProgramInfo", Unit=programInfo, TypeName="Text", Used=1).Create()
-            Domoticz.Log("Device : 'ProgramInfo' created")
+    # --- P1 / Zwave helper ---
+    def setupP1Devices(self):
+        # Als Mode4=v1, dan direct de v1-adressen gebruiken
+        if Parameters["Mode4"] == "v1":
+            self.ia_gas, self.ia_ednt, self.ia_edlt, self.ia_ernt, self.ia_erlt = ["2.1", "2.3", "2.5", "2.4", "2.6"]
+            Domoticz.Log("Mode4=v1 gekozen: P1-adressen ingesteld op v1 lijst")
 
-        # --- P1 / Zwave configuratie ---
-        if self.useZwave:
+        else:
+            # bestaande automatische detectie/logica
             paramList = []
             detected_version = None
-
             if Parameters["Mode5"]:
                 paramList = Parameters["Mode5"].split(";")
                 if len(paramList) == 5:
@@ -186,22 +168,61 @@ class BasePlugin:
                 except Exception as e:
                     Domoticz.Log(f"Error with automatic detection of Zwave versie: {e}")
                     detected_version = "error"
-
             Domoticz.Log(f"Zwave P1 addresses detected: {detected_version}")
 
-            # --- P1 Devices aanmaken ---
-            if gas not in Devices:
-                Domoticz.Device(Name="Gas", Unit=gas, TypeName="Gas", Used=1).Create()
-                Domoticz.Log("Device : 'Gas' created")
-            if electricity not in Devices:
-                Domoticz.Device(Name="Electriciteit", Unit=electricity, TypeName="kWh", Used=0).Create()
-                Domoticz.Log("Device : 'Electriciteit' created")
-            if genElectricity not in Devices:
-                Domoticz.Device(Name="Opgewekte Electriciteit", Unit=genElectricity, TypeName="Usage", Used=0).Create()
-                Domoticz.Log("Device : 'Opgewekte Electriciteit' created")
-            if p1electricity not in Devices:
-                Domoticz.Device(Name="P1 Electriciteit", Unit=p1electricity, Type=250, Subtype=1, Used=1).Create()
-                Domoticz.Log("Device : 'P1 Electriciteit' created")
+        # --- Log de gebruikte adressen ---
+        Domoticz.Log(f"P1-devices used: Gas={self.ia_gas}, EDNT={self.ia_ednt}, EDLT={self.ia_edlt}, ERNT={self.ia_ernt}, ERLT={self.ia_erlt}")
+
+
+        # --- Devices aanmaken (Gas, Electriciteit, etc.) ---
+        p1_devices = [
+            {"unit": gas, "name": "Gas", "typeName": "Gas"},
+            {"unit": electricity, "name": "Electriciteit", "typeName": "kWh", "used": 0},
+            {"unit": genElectricity, "name": "Opgewekte Electriciteit", "typeName": "Usage", "used": 0},
+            {"unit": p1electricity, "name": "P1 Electriciteit", "type": 250, "subtype": 1}
+        ]
+        for dev in p1_devices:
+            self.createDeviceIfNotExists(
+                unit=dev["unit"],
+                name=dev["name"],
+                typeName=dev.get("typeName"),
+                type_=dev.get("type"),
+                subtype=dev.get("subtype"),
+                used=dev.get("used", 1)
+            )
+
+    # --- onStart ---
+    def onStart(self):
+        Domoticz.Log(f"Plugin started, version {Parameters['Version']}")
+        if Parameters["Mode3"] == "Yes":
+            self.useZwave = True
+            Domoticz.Log("P1-data will be used (Mode3=Yes)")
+
+        devices_to_create = [
+            {"unit": curTemp, "name": "Temperatuur", "typeName": "Temperature"},
+            {"unit": setTemp, "name": "Setpunt Temperatuur", "type": 242, "subtype": 1},
+            {"unit": autoProgram, "name": "Auto Program", "typeName": "Selector Switch", "options": {"LevelActions": "||", "LevelNames": "|Uit|Aan|Tijdelijk", "LevelOffHidden": "true", "SelectorStyle": "0"}},
+            {"unit": scene, "name": "Scene", "typeName": "Selector Switch", "options": {"LevelActions": "||||", "LevelNames": "|Weg|Slapen|Thuis|Comfort|Manual", "LevelOffHidden": "true", "SelectorStyle": "0"}},
+            {"unit": boilerPressure, "name": "Keteldruk", "typeName": "Pressure"},
+            {"unit": boilerState, "name": "Ketelmode", "typeName": "Selector Switch", "options": {"LevelActions": "||", "LevelNames": "|Uit|CV|WW", "LevelOffHidden": "true", "SelectorStyle": "0"}},
+            {"unit": boilerModulation, "name": "Ketel modulatie", "type": 243, "subtype": 6},
+            {"unit": boilerSetPoint, "name": "Ketel setpoint", "type": 80, "subtype": 5, "used": 0},
+            {"unit": programInfo, "name": "ProgramInfo", "typeName": "Text"}
+        ]
+
+        for dev in devices_to_create:
+            self.createDeviceIfNotExists(
+                unit=dev["unit"],
+                name=dev["name"],
+                typeName=dev.get("typeName"),
+                type_=dev.get("type"),
+                subtype=dev.get("subtype"),
+                options=dev.get("options"),
+                used=dev.get("used", 1)
+            )
+
+        if self.useZwave:
+            self.setupP1Devices()
 
         self.fetchScenes()
         Domoticz.Heartbeat(int(Parameters['Mode2']))
@@ -231,10 +252,6 @@ class BasePlugin:
                 UpdateDevice(scene, 0, str(scene_level))
 
     def startCooldown(self, seconds=300):
-        """
-        Start een cooldownperiode waarin onHeartbeat niks ophaalt.
-        Default 300s = 5 minuten.
-        """
         self.errorCooldown = seconds
         self.lastErrorTime = time()
         Domoticz.Log(f"Error detected and cooldown activated for {seconds} seconds.")
@@ -384,9 +401,7 @@ class BasePlugin:
                 Domoticz.Debug(f"ProgramInfo bijgewerkt: {strInfo}")
 
     def updateBoilerDevices(self, Response):
-        """
-        Verwerkt de boilerstatus vanuit JSON en update alleen als de waarde verandert.
-        """
+    #Verwerkt de boilerstatus vanuit JSON en update alleen als de waarde verandert.
         try:
             data = json.loads(Response)
 
