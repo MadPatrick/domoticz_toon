@@ -1,10 +1,9 @@
 # Toon Plugin for Domoticz
-
 """
-<plugin key="RootedToonPlug" name="Toon Rooted" author="MadPatrick" version="2.6.0" externallink="https://github.com/MadPatrick/domoticz_toon">
+<plugin key="RootedToonPlug" name="Toon Rooted" author="MadPatrick" version="2.6.1" externallink="https://github.com/MadPatrick/domoticz_toon">
     <description>
         <br/><h2>Domoticz Plugin for Toon (Rooted)</h2>
-        <br/>Version: 2.6.0
+        <br/>Version: 2.6.1
         <br/>Control and synchronization of Scenes, Programs and Setpoints between Domoticz and Toon.
     </description>
     <params>
@@ -43,7 +42,7 @@
             </options>
         </param>
         <param field="Mode5" label="P1 addresses" width="300px" default="2.1;2.4;2.6;2.5;2.7">
-        <description><br/>Fill in the P1 devicenumbers seperated by ;  (2.1;2.4;2.6;2.5;2.7)
+        <description><br/>Fill in the P1 devicenumbers separated by ;  (2.1;2.4;2.6;2.5;2.7)
                      <br/>Leave empty for auto detection</description>
         </param>
         <param field="Mode6" label="Debug logging" width="150px">
@@ -60,7 +59,7 @@ import Domoticz
 import requests
 import json
 from datetime import datetime
-from time import time   # cooldown timing
+from time import time
 
 # --- Constants and device definitions ---
 programStates = ['10','20','30']
@@ -86,8 +85,7 @@ boilerSetPoint = 13
 
 zwaveAdress = {
     "v1": ["2.1", "2.3", "2.5", "2.4", "2.6"],
-#    "v2": ["2.1", "2.4", "2.6", "2.5", "2.7"],
-    "v2": ["4.1", "4.4", "4.6", "4.5", "4.7"],   # nieuwe versie
+    "v2": ["4.1", "4.4", "4.6", "4.5", "4.7"],
     "user": ["3.1", "3.4", "3.6", "3.5", "3.7"]
 }
 
@@ -104,7 +102,6 @@ def cleanError(e):
         return "Niet gevonden"
     return msg.split('(')[0].strip()
 
-
 class BasePlugin:
     def __init__(self):
         self.useZwave = False
@@ -115,60 +112,66 @@ class BasePlugin:
         self.ia_ernt = ''
         self.ia_erlt = ''
         self.sceneCounter = 0
-
-        # cooldown variabelen
         self.errorCooldown = 0
         self.lastErrorTime = None
 
     def onStart(self):
-        Domoticz.Log(f"Starting Plugin version {Parameters['Version']}")
+        Domoticz.Log(f"Plugin started, version {Parameters['Version']}")
         if Parameters["Mode3"] == "Yes":
             self.useZwave = True
+            Domoticz.Log("P1-data will be used (Mode3=Yes)")
 
-        # --- Devices aanmaken als ze niet bestaan ---
+        # --- Devices aanmaken ---
         if curTemp not in Devices:
             Domoticz.Device(Name="Temperatuur", Unit=curTemp, TypeName="Temperature", Used=1).Create()
+            Domoticz.Log("Device : 'Temperatuur' created")
         if setTemp not in Devices:
             Domoticz.Device(Name="Setpunt Temperatuur", Unit=setTemp, Type=242, Subtype=1, Used=1).Create()
+            Domoticz.Log("Device : 'Setpunt Temperatuur' created")
         if autoProgram not in Devices:
             options = {"LevelActions": "||", "LevelNames": "|Uit|Aan|Tijdelijk", "LevelOffHidden": "true", "SelectorStyle": "0"}
             Domoticz.Device(Name="Auto Program", Unit=autoProgram, TypeName="Selector Switch", Options=options, Used=1).Create()
+            Domoticz.Log("Device : 'Auto Program' created")
         if scene not in Devices:
             options = {"LevelActions": "||||", "LevelNames": "|Weg|Slapen|Thuis|Comfort|Manual", "LevelOffHidden": "true", "SelectorStyle": "0"}
             Domoticz.Device(Name="Scene", Unit=scene, TypeName="Selector Switch", Options=options, Used=1).Create()
+            Domoticz.Log("Device : 'Scene' created")
         if boilerPressure not in Devices:
-            Domoticz.Device(Name="Keteldruk", Unit=boilerPressure, TypeName="Pressure", Used=0).Create()
+            Domoticz.Device(Name="Keteldruk", Unit=boilerPressure, TypeName="Pressure", Used=1).Create()
+            Domoticz.Log("Device : 'Keteldruk' created")
         if boilerState not in Devices:
             options = {"LevelActions": "||", "LevelNames": "|Uit|CV|WW", "LevelOffHidden": "true", "SelectorStyle": "0"}
             Domoticz.Device(Name="Ketelmode", Unit=boilerState, TypeName="Selector Switch", Options=options, Used=1).Create()
+            Domoticz.Log("Device : 'Ketelmode' created")
         if boilerModulation not in Devices:
-            Domoticz.Device(Name="Ketel modulatie", Unit=boilerModulation, Type=243, Subtype=6, Used=0).Create()
+            Domoticz.Device(Name="Ketel modulatie", Unit=boilerModulation, Type=243, Subtype=6, Used=1).Create()
+            Domoticz.Log("Device : 'Ketel modulatie' created")
         if boilerSetPoint not in Devices:
             Domoticz.Device(Name="Ketel setpoint", Unit=boilerSetPoint, Type=80, Subtype=5, Used=0).Create()
+            Domoticz.Log("Device : 'Ketel setpoint' created")
         if programInfo not in Devices:
             Domoticz.Device(Name="ProgramInfo", Unit=programInfo, TypeName="Text", Used=1).Create()
+            Domoticz.Log("Device : 'ProgramInfo' created")
 
+        # --- P1 / Zwave configuratie ---
         if self.useZwave:
             paramList = []
             detected_version = None
 
             if Parameters["Mode5"]:
-                # Gebruik adressen opgegeven in Mode5
                 paramList = Parameters["Mode5"].split(";")
                 if len(paramList) == 5:
                     self.ia_gas, self.ia_ednt, self.ia_edlt, self.ia_ernt, self.ia_erlt = paramList
                     detected_version = "user (Mode5)"
+                    Domoticz.Log(f"Manual P1-addresses used: {paramList}")
                 else:
-                    Domoticz.Log("Mode5 opgegeven, maar incorrect aantal adressen. Verwacht 5 adressen.")
-    
+                    Domoticz.Log("Mode5 set, but wrong number of addresses (5 expected)")
+
             if not paramList:
-                # Fallback: automatische detectie via JSON
                 try:
                     zwave_json = self.fetchJson("/hdrv_zwave?action=getDevices.json")
                     if zwave_json:
                         internal_addresses = [dev["internalAddress"] for dev in zwave_json.values() if "internalAddress" in dev]
-                
-                        # Detecteer 4.x of 2.x v2 setup
                         if any(addr.startswith("4.") for addr in internal_addresses):
                             paramList = ["4.1", "4.4", "4.6", "4.5", "4.7"]
                             detected_version = "v2 (4.x)"
@@ -177,39 +180,34 @@ class BasePlugin:
                             detected_version = "v2 (2.x)"
                         else:
                             detected_version = "onbekend"
-                
                         if len(paramList) == 5:
                             self.ia_gas, self.ia_ednt, self.ia_edlt, self.ia_ernt, self.ia_erlt = paramList
+                            Domoticz.Log(f"Automatic P1-detectie result: {detected_version}")
                 except Exception as e:
-                    Domoticz.Log(f"Fout bij automatische detectie Zwave versie: {e}")
-                    detected_version = "fout"
+                    Domoticz.Log(f"Error with automatic detection of Zwave versie: {e}")
+                    detected_version = "error"
 
-            Domoticz.Log(f"Zwave P1 adressen setup: {detected_version}")
+            Domoticz.Log(f"Zwave P1 addresses detected: {detected_version}")
 
-            # --- Devices aanmaken ---
+            # --- P1 Devices aanmaken ---
             if gas not in Devices:
-                Domoticz.Device(Name="Gas", Unit=gas, TypeName="Gas", Used=0).Create()
+                Domoticz.Device(Name="Gas", Unit=gas, TypeName="Gas", Used=1).Create()
+                Domoticz.Log("Device : 'Gas' created")
             if electricity not in Devices:
                 Domoticz.Device(Name="Electriciteit", Unit=electricity, TypeName="kWh", Used=0).Create()
+                Domoticz.Log("Device : 'Electriciteit' created")
             if genElectricity not in Devices:
                 Domoticz.Device(Name="Opgewekte Electriciteit", Unit=genElectricity, TypeName="Usage", Used=0).Create()
+                Domoticz.Log("Device : 'Opgewekte Electriciteit' created")
             if p1electricity not in Devices:
-                Domoticz.Device(Name="P1 Electriciteit", Unit=p1electricity, Type=250, Subtype=1, Used=0).Create()
-
-        if Parameters["Mode6"] == "Debug":
-            Domoticz.Debugging(2)
-            DumpConfigToLog()
-
-        if self.useZwave:
-            paramList = zwaveAdress.get(Parameters["Mode4"], [])
-            if len(paramList) == 5:
-                self.ia_gas, self.ia_ednt, self.ia_edlt, self.ia_ernt, self.ia_erlt = paramList
+                Domoticz.Device(Name="P1 Electriciteit", Unit=p1electricity, Type=250, Subtype=1, Used=1).Create()
+                Domoticz.Log("Device : 'P1 Electriciteit' created")
 
         self.fetchScenes()
         Domoticz.Heartbeat(int(Parameters['Mode2']))
 
     def onStop(self):
-        Domoticz.Log("Plugin gestopt")
+        Domoticz.Log("Plugin stopped")
 
     def onCommand(self, Unit, Command, Level, Hue):
         Domoticz.Debug(f"onCommand Unit {Unit} Command {Command} Level {Level}")
@@ -239,7 +237,7 @@ class BasePlugin:
         """
         self.errorCooldown = seconds
         self.lastErrorTime = time()
-        Domoticz.Log(f"Fout gedetecteerd, cooldown geactiveerd voor {seconds} seconden.")
+        Domoticz.Log(f"Error detected and cooldown activated for {seconds} seconds.")
 
     def onHeartbeat(self):
         # --- Cooldown check ---
@@ -251,7 +249,7 @@ class BasePlugin:
                 return
             else:
                 # Cooldown voorbij -> reset
-                Domoticz.Log("Toon: cooldown afgelopen, probeer weer verbinding te maken.")
+                Domoticz.Log("Toon: cooldown ended, trying to reconnect.")
                 self.errorCooldown = 0
                 self.lastErrorTime = None
 
@@ -282,7 +280,7 @@ class BasePlugin:
             r.raise_for_status()
             return r.json()
         except Exception as e:
-            Domoticz.Log(f"Kan '{path}' niet ophalen: {cleanError(e)}. Cooldown 300s.")
+            Domoticz.Log(f"Cannot fetch '{path}': {cleanError(e)}. Cooldown 300s.")
             self.startCooldown()
             return None
 
@@ -293,7 +291,7 @@ class BasePlugin:
             r.raise_for_status()
             return r.text
         except Exception as e:
-            Domoticz.Log(f"Kan '{path}' niet ophalen: {cleanError(e)}. Cooldown 300s.")
+            Domoticz.Log(f"Cannot fetch '{path}': {cleanError(e)}. Cooldown 300s.")
             self.startCooldown()
             return None
 
@@ -459,7 +457,6 @@ class BasePlugin:
             ))
         except Exception as e:
             Domoticz.Log(f"Error processing P1 values: {e}")
-
 
 # --- Global instance ---
 global _plugin
