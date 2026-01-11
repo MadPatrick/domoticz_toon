@@ -1,16 +1,23 @@
 # Toon Plugin for Domoticz
 
 """
-<plugin key="RootedToonPlug" name="Toon Rooted" author="MadPatrick" version="2.5.4" externallink="https://github.com/MadPatrick/domoticz_toon">
+<plugin key="RootedToonPlug" name="Toon Rooted" author="MadPatrick" version="2.6.0" externallink="https://github.com/MadPatrick/domoticz_toon">
     <description>
         <br/><h2>Domoticz Plugin for Toon (Rooted)</h2>
-        <br/>Version: 2.5.4
+        <br/>Version: 2.6.0
         <br/>Control and synchronization of Scenes, Programs and Setpoints between Domoticz and Toon.
     </description>
     <params>
         <param field="Address" label="IP Address" width="150px" required="true" default="192.168.1.200" />
         <param field="Port" label="Port" width="150px" required="true" default="80" />
-        <param field="Mode1" label="Refresh Interval Scenes" width="150px" required="true" default="300" />
+        <param field="Mode1" label="Refresh Interval Scenes" width="150px">
+            <options>
+                <option label="30m" value="1800"/>
+                <option label="1hr" value="3600" default="true"/>
+                <option label="2hr" value="7200"/>
+                <option label="6hr" value="2160"/>
+            </options>
+        </param>
         <param field="Mode2" label="Refresh interval" width="150px">
             <options>
                 <option label="10s" value="10"/>
@@ -35,7 +42,10 @@
                 <option label="user defined" value="user"/>
             </options>
         </param>
-        <param field="Mode5" label="P1 adresses" width="150px" default="2.1;2.4;2.6;2.5;2.7"/>
+        <param field="Mode5" label="P1 addresses" width="300px" default="2.1;2.4;2.6;2.5;2.7">
+        <description><br/>Fill in the P1 devicenumbers seperated by ;  (2.1;2.4;2.6;2.5;2.7)
+                     <br/>Leave empty for auto detection</description>
+        </param>
         <param field="Mode6" label="Debug logging" width="150px">
             <options>
                 <option label="True" value="Debug"/>
@@ -76,7 +86,8 @@ boilerSetPoint = 13
 
 zwaveAdress = {
     "v1": ["2.1", "2.3", "2.5", "2.4", "2.6"],
-    "v2": ["2.1", "2.4", "2.6", "2.5", "2.7"],
+#    "v2": ["2.1", "2.4", "2.6", "2.5", "2.7"],
+    "v2": ["4.1", "4.4", "4.6", "4.5", "4.7"],   # nieuwe versie
     "user": ["3.1", "3.4", "3.6", "3.5", "3.7"]
 }
 
@@ -138,6 +149,44 @@ class BasePlugin:
             Domoticz.Device(Name="ProgramInfo", Unit=programInfo, TypeName="Text", Used=1).Create()
 
         if self.useZwave:
+            paramList = []
+            detected_version = None
+
+            if Parameters["Mode5"]:
+                # Gebruik adressen opgegeven in Mode5
+                paramList = Parameters["Mode5"].split(";")
+                if len(paramList) == 5:
+                    self.ia_gas, self.ia_ednt, self.ia_edlt, self.ia_ernt, self.ia_erlt = paramList
+                    detected_version = "user (Mode5)"
+                else:
+                    Domoticz.Log("Mode5 opgegeven, maar incorrect aantal adressen. Verwacht 5 adressen.")
+    
+            if not paramList:
+                # Fallback: automatische detectie via JSON
+                try:
+                    zwave_json = self.fetchJson("/hdrv_zwave?action=getDevices.json")
+                    if zwave_json:
+                        internal_addresses = [dev["internalAddress"] for dev in zwave_json.values() if "internalAddress" in dev]
+                
+                        # Detecteer 4.x of 2.x v2 setup
+                        if any(addr.startswith("4.") for addr in internal_addresses):
+                            paramList = ["4.1", "4.4", "4.6", "4.5", "4.7"]
+                            detected_version = "v2 (4.x)"
+                        elif any(addr.startswith("2.") for addr in internal_addresses):
+                            paramList = ["2.1", "2.4", "2.6", "2.5", "2.7"]
+                            detected_version = "v2 (2.x)"
+                        else:
+                            detected_version = "onbekend"
+                
+                        if len(paramList) == 5:
+                            self.ia_gas, self.ia_ednt, self.ia_edlt, self.ia_ernt, self.ia_erlt = paramList
+                except Exception as e:
+                    Domoticz.Log(f"Fout bij automatische detectie Zwave versie: {e}")
+                    detected_version = "fout"
+
+            Domoticz.Log(f"Zwave P1 adressen setup: {detected_version}")
+
+            # --- Devices aanmaken ---
             if gas not in Devices:
                 Domoticz.Device(Name="Gas", Unit=gas, TypeName="Gas", Used=0).Create()
             if electricity not in Devices:
@@ -327,7 +376,8 @@ class BasePlugin:
                 strInfo = "Program is off"
             else:
                 dt = datetime.fromtimestamp(int(Response["nextTime"]))
-                strNextTime = dt.strftime("%Y-%d-%m %H:%M:%S")
+#                strNextTime = dt.strftime("%Y-%d-%m %H:%M:%S")
+                strNextTime = dt.strftime("%d-%m-%Y %H:%M:%S")
                 strNextProgram = strPrograms[int(Response["nextState"])]
                 strNextSetpoint = "%.1f" % (float(Response["nextSetpoint"]) / 100)
                 strInfo = f"Next program {strNextProgram} ({strNextSetpoint} C) at {strNextTime}"
@@ -336,16 +386,32 @@ class BasePlugin:
                 Domoticz.Debug(f"ProgramInfo bijgewerkt: {strInfo}")
 
     def updateBoilerDevices(self, Response):
+        """
+        Verwerkt de boilerstatus vanuit JSON en update alleen als de waarde verandert.
+        """
         try:
             data = json.loads(Response)
-            if 'boilerPressure' in data:
-                UpdateDevice(boilerPressure, 0, float(data['boilerPressure']))
-            if 'boilerSetpoint' in data:
-                UpdateDevice(boilerSetPoint, 0, float(data['boilerSetpoint']))
-            if 'boilerModulationLevel' in data:
-                UpdateDevice(boilerModulation, 0, int(data['boilerModulationLevel']))
+
+            # Helper functie: update alleen als waarde verandert
+            def safe_update(unit, value):
+                if unit in Devices:
+                    dev = Devices[unit]
+                    # Alleen update als de nieuwe waarde anders is
+                    if dev.sValue != str(value):
+                        UpdateDevice(unit, 0, value)
+
+            # Boiler waarden bijwerken
+            if 'boilerPressure' in data and data['boilerPressure'] is not None:
+                safe_update(boilerPressure, float(data['boilerPressure']))
+
+            if 'boilerSetpoint' in data and data['boilerSetpoint'] is not None:
+                safe_update(boilerSetPoint, float(data['boilerSetpoint']))
+
+            if 'boilerModulationLevel' in data and data['boilerModulationLevel'] is not None:
+                safe_update(boilerModulation, int(data['boilerModulationLevel']))
+
         except Exception as e:
-            Domoticz.Log(f"Fout bij verwerken boiler JSON: {e}")
+            Domoticz.Error(f"Fout bij verwerken boiler JSON: {e}")
 
     # --- Zwave bijwerken ---
     def updateZwaveDevices(self, Response):
