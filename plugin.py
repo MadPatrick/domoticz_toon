@@ -1,12 +1,32 @@
 # Toon Plugin for Domoticz
 """
-<plugin key="RootedToonPlug" name="Toon Rooted" author="MadPatrick" version="2.6.2" externallink="https://github.com/MadPatrick/domoticz_toon">
-    <description>
-        <br/><h2>Domoticz Plugin for Toon (Rooted)</h2>
-        <br/>Version: 2.6.2
-        <br/>Control and synchronization of Scenes, Programs and Setpoints between Domoticz and Toon.
-    </description>
-    <params>
+<plugin key="RootedToonPlug" name="Toon Rooted" author="MadPatrick" version="2.6.3" externallink="https://github.com/MadPatrick/domoticz_toon">
+      <description>
+          <br/><h2>Domoticz Plugin for Toon (Rooted)</h2>
+          <br/>Version: 2.6.3
+          <br/><br/>
+          This plugin allows Domoticz to communicate with a Rooted Toon thermostat. Its main functionalities are:
+          <ul>
+              <li>Control and synchronize Scenes, Programs, and Setpoints between Domoticz and Toon.</li>
+              <li>Read and update temperature and energy data from the Toon device.</li>
+              <li>Set refresh intervals for Scenes and real-time data independently.</li>
+              <li>Read P1 smart meter data, with configurable device addresses for selective monitoring.</li>
+              <li>Support for different Toon versions: v1, v2, or user-defined.</li>
+              <li>Enable or disable debug logging for troubleshooting purposes.</li>
+          </ul>
+          <br/>
+          The plugin creates the following Domoticz devices:
+          <ul>
+              <li>Current temperature and setpoint</li>
+              <li>Heating/cooling status</li>
+              <li>Active Scenes and Programs</li>
+              <li>Energy consumption (electricity and gas) from P1 meter</li>
+              <li>Individual P1 devices as defined in the plugin configuration</li>
+          </ul>
+          <br/>
+          Fields left empty, such as P1 addresses, will be automatically detected by the plugin.
+      </description>
+      <params>
         <param field="Address" label="IP Address" width="150px" required="true" default="192.168.1.200" />
         <param field="Port" label="Port" width="150px" required="true" default="80" />
         <param field="Mode1" label="Refresh Interval Scenes" width="150px">
@@ -43,7 +63,7 @@
         </param>
         <param field="Mode5" label="P1 addresses" width="300px" default="2.1;2.4;2.6;2.5;2.7">
         <description><br/>Fill in the P1 devicenumbers separated by ;  (2.1;2.4;2.6;2.5;2.7)
-                     <br/>Leave empty for auto detection</description>
+                     <br/><span style="color: yellow;">Leave empty for auto detection</span></description>
         </param>
         <param field="Mode6" label="Debug logging" width="150px">
             <options>
@@ -131,48 +151,72 @@ class BasePlugin:
 
     # --- P1 / Zwave helper ---
     def setupP1Devices(self):
-        # Als Mode4=v1, dan direct de v1-adressen gebruiken
-        if Parameters["Mode4"] == "v1":
-            self.ia_gas, self.ia_ednt, self.ia_edlt, self.ia_ernt, self.ia_erlt = ["2.1", "2.3", "2.5", "2.4", "2.6"]
-            Domoticz.Log("Mode4=v1 gekozen: P1-adressen ingesteld op v1 lijst")
+        paramList = []
+        detected_version = None
 
-        else:
-            # bestaande automatische detectie/logica
-            paramList = []
-            detected_version = None
-            if Parameters["Mode5"]:
-                paramList = Parameters["Mode5"].split(";")
-                if len(paramList) == 5:
-                    self.ia_gas, self.ia_ednt, self.ia_edlt, self.ia_ernt, self.ia_erlt = paramList
-                    detected_version = "user (Mode5)"
-                    Domoticz.Log(f"Manual P1-addresses used: {paramList}")
-                else:
-                    Domoticz.Log("Mode5 set, but wrong number of addresses (5 expected)")
+        # --- Handmatige Mode5 check ---
+        if Parameters["Mode5"]:
+            paramList = Parameters["Mode5"].split(";")
+            if len(paramList) == 5:
+                self.ia_gas, self.ia_ednt, self.ia_edlt, self.ia_ernt, self.ia_erlt = paramList
+                detected_version = "user (Mode5)"
+                Domoticz.Log(f"Manual P1-addresses used: {paramList}")
+            else:
+                Domoticz.Log("Mode5 set, but wrong number of addresses (5 expected)")
+                paramList = []
 
-            if not paramList:
-                try:
-                    zwave_json = self.fetchJson("/hdrv_zwave?action=getDevices.json")
-                    if zwave_json:
-                        internal_addresses = [dev["internalAddress"] for dev in zwave_json.values() if "internalAddress" in dev]
-                        if any(addr.startswith("4.") for addr in internal_addresses):
-                            paramList = ["4.1", "4.4", "4.6", "4.5", "4.7"]
-                            detected_version = "v2 (4.x)"
-                        elif any(addr.startswith("2.") for addr in internal_addresses):
-                            paramList = ["2.1", "2.4", "2.6", "2.5", "2.7"]
-                            detected_version = "v2 (2.x)"
-                        else:
-                            detected_version = "onbekend"
-                        if len(paramList) == 5:
-                            self.ia_gas, self.ia_ednt, self.ia_edlt, self.ia_ernt, self.ia_erlt = paramList
-                            Domoticz.Log(f"Automatic P1-detectie result: {detected_version}")
-                except Exception as e:
-                    Domoticz.Log(f"Error with automatic detection of Zwave versie: {e}")
-                    detected_version = "error"
-            Domoticz.Log(f"Zwave P1 addresses detected: {detected_version}")
+        # --- Automatische detectie ---
+        if not paramList:
+            detected_version = "niet gedetecteerd"
+            try:
+                zwave_json = self.fetchJson("/hdrv_zwave?action=getDevices.json")
+                if zwave_json:
+                    internal_addresses = [
+                        dev["internalAddress"] for dev in zwave_json.values()
+                        if "internalAddress" in dev
+                    ]
 
-        # --- Log de gebruikte adressen ---
-        Domoticz.Log(f"P1-devices used: Gas={self.ia_gas}, EDNT={self.ia_ednt}, EDLT={self.ia_edlt}, ERNT={self.ia_ernt}, ERLT={self.ia_erlt}")
+                    # --- Alleen geldige meter-adressen gebruiken (cijfer of cijfer.cijfer) ---
+                    valid_addresses = [
+                        addr for addr in internal_addresses
+                        if addr.replace(".", "").isdigit()
+                    ]
 
+                    if not valid_addresses:
+                        Domoticz.Log("WARNING: No valid meter addresses detected")
+                        return
+
+                    # --- Verzamel unieke prefixes ---
+                    prefixes = set(addr.split(".")[0] if "." in addr else addr for addr in valid_addresses)
+
+                    # --- Verzamel unieke prefixes ---
+                    prefixes = set(addr.split(".")[0] if "." in addr else addr for addr in valid_addresses)
+
+                    # Kies de prefix met de meeste meters
+                    detected_prefix = max(prefixes, key=lambda p: sum(1 for a in valid_addresses if a.startswith(p + ".")))
+
+                    # --- Suffixes per Mode4 (orde = gas, ednt, edlt, ernt, erlt) ---
+                    if Parameters["Mode4"] == "v1":
+                        suffixes = ["1","3","5","4","6"]
+                    else:  # v2
+                        suffixes = ["1","4","6","5","7"]
+
+                    # --- Maak volledige paramList ---
+                    paramList = [f"{detected_prefix}.{s}" for s in suffixes]
+
+                    # --- Koppel devices ---
+                    if len(paramList) == 5:
+                        self.ia_gas, self.ia_ednt, self.ia_edlt, self.ia_ernt, self.ia_erlt = paramList
+                        detected_version = f"{Parameters['Mode4']} ({detected_prefix}.x)"
+                        Domoticz.Log(f"Automatic P1-detection used: {detected_version}")
+
+            except Exception as e:
+                detected_version = "error"
+                Domoticz.Log(f"Error with automatic detection of Zwave versie: {e}")
+
+        # --- Log de uiteindelijke P1-devices ---
+        Domoticz.Log(f"P1-devices used: Gas={self.ia_gas}, DeliveredNT={self.ia_ednt}, DeliveredLT={self.ia_edlt}, ReceivedNT={self.ia_ernt}, ReceivedLT={self.ia_erlt}")
+        Domoticz.Log(f"Zwave P1 addresses detected: {detected_version}")
 
         # --- Devices aanmaken (Gas, Electriciteit, etc.) ---
         p1_devices = [
