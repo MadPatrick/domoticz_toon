@@ -63,7 +63,11 @@ The plugin provides **bidirectional synchronization** and comprehensive monitori
 
 **⚠️ Use at your own risk.** The internal Z-Wave/P1 device addresses may vary across Toon versions and installations.
 
-The plugin provides default mappings, but if they are incorrect, you may need to specify the addresses manually:
+The plugin provides automatic mapping of the P1 addresses, 
+Select the type of Toon (v1 or V2) and leave the field **"P1 Addresses"** empty
+After completion and added the plugin check the log. You will see the devices which have been found.
+
+If they are incorrect, you may need to specify the addresses manually:
 
 1.  **Find the Addresses**: Open the JSON link in your browser to view the live internal addresses:
     ```
@@ -89,11 +93,13 @@ The plugin provides default mappings, but if they are incorrect, you may need to
 
 Set up the connection details and Z-Wave/P1 behavior of the plugin via the Domoticz hardware setup menu.
 
-<img width="1079" height="616" alt="image" src="https://github.com/user-attachments/assets/005c0ddd-ba8c-4a7b-9347-783454adae42" />
+<img width="790" height="454" alt="image" src="https://github.com/user-attachments/assets/43afbce6-5bee-4207-8e7e-d05a1d315090" />
+
 
 
 ## 📲 Installed Domoticz Devices
 
 A list of the devices created by the plugin in your Domoticz Devices tab.
 
-![image](https://user-images.githubusercontent.com/81873830/210851429-d6085416-cc71-4519-8603-94d8226793e3.png)
+<img width="958" height="631" alt="image" src="https://github.com/user-attachments/assets/e53e3cbc-e336-4084-8a00-3e7b97b81666" />
+
