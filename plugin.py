@@ -1,9 +1,11 @@
 # Toon Plugin for Domoticz
+# 2.6.4 icons added
+#       cleanup double entries
 """
-<plugin key="RootedToonPlug" name="Toon Rooted" author="MadPatrick" version="2.6.3" externallink="https://github.com/MadPatrick/domoticz_toon">
+<plugin key="RootedToonPlug" name="Toon Rooted" author="MadPatrick" version="2.6.4" externallink="https://github.com/MadPatrick/domoticz_toon">
       <description>
           <br/><h2>Domoticz Plugin for Toon (Rooted)</h2>
-          <br/>Version: 2.6.3
+          <br/>Version: 2.6.4
           <br/><br/>
           This plugin allows Domoticz to communicate with a Rooted Toon thermostat. Its main functionalities are:
           <ul>
@@ -34,7 +36,7 @@
                 <option label="30m" value="1800"/>
                 <option label="1hr" value="3600" default="true"/>
                 <option label="2hr" value="7200"/>
-                <option label="6hr" value="2160"/>
+                <option label="6hr" value="21600"/>
             </options>
         </param>
         <param field="Mode2" label="Refresh interval" width="150px">
@@ -61,7 +63,7 @@
                 <option label="user defined" value="user"/>
             </options>
         </param>
-        <param field="Mode5" label="P1 addresses" width="300px" default="2.1;2.4;2.6;2.5;2.7">
+        <param field="Mode5" label="P1 addresses" width="300px" default=" ">
         <description><br/>Fill in the P1 devicenumbers separated by ;  (2.1;2.4;2.6;2.5;2.7)
                      <br/><span style="color: yellow;">Leave empty for auto detection</span></description>
         </param>
@@ -110,19 +112,21 @@ def cleanError(e):
     if "not found" in msg: return "Niet gevonden"
     return msg.split('(')[0].strip()
 
-def SafeInt(value):
-    try: return int(value)
-    except (ValueError, TypeError): return None
+#def SafeInt(value):
+#    try: return int(value)
+#    except (ValueError, TypeError): return None
 
-def UpdateDevice(Unit, nValue, sValue, TimedOut=0):
-    try:
-        if Unit in Devices:
-            dev = Devices[Unit]
-            if dev.nValue != nValue or dev.sValue != str(sValue):
-                dev.Update(nValue=nValue, sValue=str(sValue), TimedOut=TimedOut)
-                Domoticz.Debug(f"{dev.Name}: {dev.sValue}")
-    except Exception as e:
-        Domoticz.Log(f"Update of device {Unit} failed: {e}")
+
+
+#def UpdateDevice(Unit, nValue, sValue, TimedOut=0):
+#    try:
+#        if Unit in Devices:
+#            dev = Devices[Unit]
+#            if dev.nValue != nValue or dev.sValue != str(sValue):
+#                dev.Update(nValue=nValue, sValue=str(sValue), TimedOut=TimedOut)
+#                Domoticz.Debug(f"{dev.Name}: {dev.sValue}")
+#    except Exception as e:
+#        Domoticz.Log(f"Update of device {Unit} failed: {e}")
 
 # --- BasePlugin class ---
 class BasePlugin:
@@ -139,15 +143,38 @@ class BasePlugin:
         self.lastErrorTime = None
 
     # --- Device helper ---
-    def createDeviceIfNotExists(self, unit, name, typeName=None, type_=None, subtype=None, options=None, used=1):
+    # --- Device helper ---
+    # --- Device helper ---
+    def createDeviceIfNotExists(self, unit, name, typeName=None, type_=None,
+                                subtype=None, options=None, used=1, image=None):
         if unit not in Devices:
-            if options:
-                Domoticz.Device(Name=name, Unit=unit, TypeName=typeName, Options=options, Used=used).Create()
-            elif type_ is not None:
-                Domoticz.Device(Name=name, Unit=unit, Type=type_, Subtype=subtype or 0, Used=used).Create()
-            else:
-                Domoticz.Device(Name=name, Unit=unit, TypeName=typeName, Used=used).Create()
-            Domoticz.Log(f"Device '{name}' created")
+            # Maak een dictionary met de basis parameters die de API accepteert
+            params = {
+                "Name": name,
+                "Unit": unit,
+                "Used": used
+            }
+            
+            # Voeg optionele parameters toe
+            if typeName: params["TypeName"] = typeName
+            if type_ is not None: params["Type"] = type_
+            if subtype is not None: params["Subtype"] = subtype
+            if options: params["Options"] = options
+            if image is not None: params["Image"] = image
+
+            # 1. Maak het device aan
+            Domoticz.Device(**params).Create()
+            
+            # 2. Update direct naar 0 om de 'invalid value' error te voorkomen
+            if unit in Devices:
+                # Voor een gasmeter is "0" een geldige startwaarde
+                # Voor P1 elektra is "0;0;0;0;0;0" veiliger, maar we beginnen met "0"
+                initialValue = "0"
+                if unit == p1electricity:
+                    initialValue = "0;0;0;0;0;0"
+                
+                Devices[unit].Update(nValue=0, sValue=initialValue)
+                Domoticz.Log(f"Device '{name}' (Unit {unit}) geinitialiseerd op 0")
 
     # --- P1 / Zwave helper ---
     def setupP1Devices(self):
@@ -190,7 +217,7 @@ class BasePlugin:
                     prefixes = set(addr.split(".")[0] if "." in addr else addr for addr in valid_addresses)
 
                     # --- Verzamel unieke prefixes ---
-                    prefixes = set(addr.split(".")[0] if "." in addr else addr for addr in valid_addresses)
+#                    prefixes = set(addr.split(".")[0] if "." in addr else addr for addr in valid_addresses)
 
                     # Kies de prefix met de meeste meters
                     detected_prefix = max(prefixes, key=lambda p: sum(1 for a in valid_addresses if a.startswith(p + ".")))
@@ -242,27 +269,68 @@ class BasePlugin:
             self.useZwave = True
             Domoticz.Log("P1-data will be used (Mode3=Yes)")
 
+        # Stel debug niveau in op basis van Mode6
+        if Parameters["Mode6"] == "Debug":
+            Domoticz.Debugging(1)
+            Domoticz.Log("Debug logging ingeschakeld")
+        else:
+            Domoticz.Debugging(0)
+
+        # --- Icon Pack: Standaard ---
+        _IMAGE = "Toon"
+        creating_new_icon = _IMAGE not in Images
+        try:
+            Domoticz.Image(f"{_IMAGE}.zip").Create()
+            if _IMAGE in Images:
+                self.imageID = Images[_IMAGE].ID
+                if creating_new_icon:
+                    Domoticz.Log(f"Icons '{_IMAGE}' created and loaded.")
+                else:
+                    Domoticz.Log(f"Icons '{_IMAGE}' found in database (ID={self.imageID}).")
+            else:
+                Domoticz.Error(f"Unable to load icon pack '{_IMAGE}.zip'")
+        except Exception as e:
+            Domoticz.Error(f"Error loading icon pack {_IMAGE}: {e}")
+
+        # --- Icon Pack: Geïnverteerd (INV) ---
+        _IMAGE_INV = "Toon_inv"
+        creating_new_inv_icon = _IMAGE_INV not in Images
+        try:
+            Domoticz.Image(f"{_IMAGE_INV}.zip").Create()
+            if _IMAGE_INV in Images:
+                self.imageInvID = Images[_IMAGE_INV].ID
+                if creating_new_inv_icon:
+                    Domoticz.Log(f"Icons '{_IMAGE_INV}' created and loaded.")
+                else:
+                    Domoticz.Log(f"Icons '{_IMAGE_INV}' found in database (ID={self.imageInvID}).")
+            else:
+                Domoticz.Error(f"Unable to load icon pack '{_IMAGE_INV}.zip'")
+        except Exception as e:
+            Domoticz.Error(f"Error loading icon pack {_IMAGE_INV}: {e}")
+
+
         devices_to_create = [
-            {"unit": curTemp, "name": "Temperatuur", "typeName": "Temperature"},
-            {"unit": setTemp, "name": "Setpunt Temperatuur", "type": 242, "subtype": 1},
-            {"unit": autoProgram, "name": "Auto Program", "typeName": "Selector Switch", "options": {"LevelActions": "||", "LevelNames": "|Uit|Aan|Tijdelijk", "LevelOffHidden": "true", "SelectorStyle": "0"}},
-            {"unit": scene, "name": "Scene", "typeName": "Selector Switch", "options": {"LevelActions": "||||", "LevelNames": "|Weg|Slapen|Thuis|Comfort|Manual", "LevelOffHidden": "true", "SelectorStyle": "0"}},
-            {"unit": boilerPressure, "name": "Keteldruk", "typeName": "Pressure"},
-            {"unit": boilerState, "name": "Ketelmode", "typeName": "Selector Switch", "options": {"LevelActions": "||", "LevelNames": "|Uit|CV|WW", "LevelOffHidden": "true", "SelectorStyle": "0"}},
-            {"unit": boilerModulation, "name": "Ketel modulatie", "type": 243, "subtype": 6},
-            {"unit": boilerSetPoint, "name": "Ketel setpoint", "type": 80, "subtype": 5, "used": 0},
-            {"unit": programInfo, "name": "ProgramInfo", "typeName": "Text"}
+            {"unit": curTemp, "name": "Temperatuur", "typeName": "Temperature", "image": self.imageID},
+            {"unit": setTemp, "name": "Setpunt Temperatuur", "type": 242, "subtype": 1, "image": self.imageID},
+            {"unit": autoProgram, "name": "Auto Program", "typeName": "Selector Switch", "options": {"LevelActions": "||", "LevelNames": "|Uit|Aan|Tijdelijk", "LevelOffHidden": "true", "SelectorStyle": "0"}, "image": self.imageInvID},
+            {"unit": scene, "name": "Scene", "typeName": "Selector Switch", "options": {"LevelActions": "||||", "LevelNames": "|Weg|Slapen|Thuis|Comfort|Manual", "LevelOffHidden": "true", "SelectorStyle": "0"}, "image": self.imageInvID},
+            {"unit": boilerPressure, "name": "Keteldruk", "typeName": "Pressure", "image": self.imageID},
+            {"unit": boilerState, "name": "Ketelmode", "typeName": "Selector Switch", "options": {"LevelActions": "||", "LevelNames": "|Uit|CV|WW", "LevelOffHidden": "true", "SelectorStyle": "0"}, "image": self.imageInvID},
+            {"unit": boilerModulation, "name": "Ketel modulatie", "type": 243, "subtype": 6, "image": self.imageID},
+            {"unit": boilerSetPoint, "name": "Ketel setpoint", "type": 80, "subtype": 5, "used": 0, "image": self.imageID},
+            {"unit": programInfo, "name": "ProgramInfo", "typeName": "Text", "image": self.imageID}
         ]
 
         for dev in devices_to_create:
             self.createDeviceIfNotExists(
-                unit=dev["unit"],
-                name=dev["name"],
-                typeName=dev.get("typeName"),
-                type_=dev.get("type"),
-                subtype=dev.get("subtype"),
-                options=dev.get("options"),
-                used=dev.get("used", 1)
+            unit=dev["unit"],
+            name=dev["name"],
+            typeName=dev.get("typeName"),
+            type_=dev.get("type"),
+            subtype=dev.get("subtype"),
+            options=dev.get("options"),
+            used=dev.get("used", 1),
+            image=dev.get("image")
             )
 
         if self.useZwave:
