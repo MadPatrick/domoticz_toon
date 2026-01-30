@@ -63,7 +63,7 @@
                 <option label="user defined" value="user"/>
             </options>
         </param>
-        <param field="Mode5" label="P1 addresses" width="300px" default=" ">
+        <param field="Mode5" label="P1 addresses" width="300px" default="">
         <description><br/>Fill in the P1 devicenumbers separated by ;  (2.1;2.4;2.6;2.5;2.7)
                      <br/><span style="color: yellow;">Leave empty for auto detection</span></description>
         </param>
