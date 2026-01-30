@@ -2,10 +2,10 @@
 # 2.6.4 icons added
 #       cleanup double entries
 """
-<plugin key="RootedToonPlug" name="Toon Rooted" author="MadPatrick" version="2.6.4" externallink="https://github.com/MadPatrick/domoticz_toon">
+<plugin key="RootedToonPlug" name="Toon Rooted" author="MadPatrick" version="2.6.5" externallink="https://github.com/MadPatrick/domoticz_toon">
       <description>
           <br/><h2>Domoticz Plugin for Toon (Rooted)</h2>
-          <br/>Version: 2.6.4
+          <br/>Version: 2.6.5
           <br/><br/>
           This plugin allows Domoticz to communicate with a Rooted Toon thermostat. Its main functionalities are:
           <ul>
@@ -102,31 +102,6 @@ p1electricity = 10
 boilerState = 11
 boilerModulation = 12
 boilerSetPoint = 13
-
-# --- Helper functions ---
-def cleanError(e):
-    msg = str(e).lower()
-    if "refused" in msg: return "Verbinding geweigerd"
-    if "timeout" in msg: return "Timeout"
-    if "max retries" in msg: return "Max retries bereikt"
-    if "not found" in msg: return "Niet gevonden"
-    return msg.split('(')[0].strip()
-
-#def SafeInt(value):
-#    try: return int(value)
-#    except (ValueError, TypeError): return None
-
-
-
-#def UpdateDevice(Unit, nValue, sValue, TimedOut=0):
-#    try:
-#        if Unit in Devices:
-#            dev = Devices[Unit]
-#            if dev.nValue != nValue or dev.sValue != str(sValue):
-#                dev.Update(nValue=nValue, sValue=str(sValue), TimedOut=TimedOut)
-#                Domoticz.Debug(f"{dev.Name}: {dev.sValue}")
-#    except Exception as e:
-#        Domoticz.Log(f"Update of device {Unit} failed: {e}")
 
 # --- BasePlugin class ---
 class BasePlugin:
@@ -426,6 +401,10 @@ class BasePlugin:
 
     # --- Scenes ophalen ---
     def fetchScenes(self):
+        # Bewaar oude scene_map om te vergelijken
+        old_scene_map = self.scene_map.copy()
+
+        # Ophalen van de scene-data van Toon
         data = self.fetchJson("/hcb_config?action=getObjectConfigTree&package=happ_thermstat&internalAddress=thermostatStates")
         if data and 'states' in data and len(data['states']) > 0:
             state_list = data['states'][0]['state']
@@ -435,11 +414,23 @@ class BasePlugin:
                 temp = float(s['tempValue'][0]) / 100
                 if id_ <= 3:
                     self.scene_map[str(self.idToScene(id_))] = temp
-            toon_scene = self.getActiveSceneFromToon()
-            if toon_scene is not None:
-                current_scene_val = SafeInt(Devices[scene].sValue) if scene in Devices else None
-                if current_scene_val != toon_scene:
-                    UpdateDevice(scene, 0, str(toon_scene))
+
+            # Log alleen als de scene-instellingen daadwerkelijk zijn veranderd
+            if self.scene_map != old_scene_map:
+                Domoticz.Log("Scene instellingen van Toon bijgewerkt:")
+                for scene_id, temp in sorted(self.scene_map.items()):
+                    scene_name = {10: "Weg", 20: "Slapen", 30: "Thuis", 40: "Comfort", 50: "Manual"}.get(int(scene_id), str(scene_id))
+                    Domoticz.Log(f"  {scene_name}: {temp:.1f}\u00B0C")
+            else:
+                Domoticz.Debug("Scene instellingen van Toon opgehaald, geen wijzigingen")
+
+        # Controleer of de actieve scene moet worden bijgewerkt
+        toon_scene = self.getActiveSceneFromToon()
+        if toon_scene is not None:
+            current_scene_val = SafeInt(Devices[scene].sValue) if scene in Devices else None
+            if current_scene_val != toon_scene:
+                UpdateDevice(scene, 0, str(toon_scene))
+
 
     def idToScene(self, id_):
         mapping = {0: 40, 1: 30, 2: 20, 3: 10}
@@ -599,6 +590,14 @@ def DumpConfigToLog():
     for x in Parameters:
         Domoticz.Debug(f"'{x}':'{Parameters[x]}'")
 
+def cleanError(e):
+    msg = str(e).lower()
+    if "refused" in msg: return "Verbinding geweigerd"
+    if "timeout" in msg: return "Timeout"
+    if "max retries" in msg: return "Max retries bereikt"
+    if "not found" in msg: return "Niet gevonden"
+    return msg.split('(')[0].strip()
+
 def SafeInt(value):
     try:
         return int(value)
@@ -642,7 +641,7 @@ def UpdateDevice(Unit, nValue, sValue, TimedOut=0):
 
                 if Unit not in silent_units:
                     Domoticz.Log(f"{dev.Name}: {readable_old} -> '{readable_new}'")
-
                 Domoticz.Debug(f"{dev.Name}: {readable_old} -> '{readable_new}'")
+
     except Exception as e:
         Domoticz.Log(f"Update of device {Unit} failed: {e}")
