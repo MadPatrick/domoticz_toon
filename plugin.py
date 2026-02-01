@@ -1,6 +1,6 @@
 # Toon Plugin for Domoticz
-# 2.6.4 icons added
-#       cleanup double entries
+# 
+#  
 """
 <plugin key="RootedToonPlug" name="Toon Rooted" author="MadPatrick" version="2.6.5" externallink="https://github.com/MadPatrick/domoticz_toon">
       <description>
@@ -118,8 +118,6 @@ class BasePlugin:
         self.lastErrorTime = None
 
     # --- Device helper ---
-    # --- Device helper ---
-    # --- Device helper ---
     def createDeviceIfNotExists(self, unit, name, typeName=None, type_=None,
                                 subtype=None, options=None, used=1, image=None):
         if unit not in Devices:
@@ -190,9 +188,6 @@ class BasePlugin:
 
                     # --- Verzamel unieke prefixes ---
                     prefixes = set(addr.split(".")[0] if "." in addr else addr for addr in valid_addresses)
-
-                    # --- Verzamel unieke prefixes ---
-#                    prefixes = set(addr.split(".")[0] if "." in addr else addr for addr in valid_addresses)
 
                     # Kies de prefix met de meeste meters
                     detected_prefix = max(prefixes, key=lambda p: sum(1 for a in valid_addresses if a.startswith(p + ".")))
@@ -503,31 +498,27 @@ class BasePlugin:
                 UpdateDevice(Unit=programInfo, nValue=0, sValue=strInfo)
                 Domoticz.Debug(f"ProgramInfo bijgewerkt: {strInfo}")
 
+    def safeUpdate(self, unit, nValue, sValue, timedOut=0):
+        if unit in Devices:
+            if Devices[unit].nValue != nValue or Devices[unit].sValue != str(sValue):
+                # Optioneel: logica voor leesbare logs verplaatsen naar hier
+                Devices[unit].Update(nValue=nValue, sValue=str(sValue), TimedOut=timedOut)
+
     def updateBoilerDevices(self, Response):
-    #Verwerkt de boilerstatus vanuit JSON en update alleen als de waarde verandert.
         try:
+            if not Response or not Response.strip():
+                return
             data = json.loads(Response)
-
-            # Helper functie: update alleen als waarde verandert
-            def safe_update(unit, value):
-                if unit in Devices:
-                    dev = Devices[unit]
-                    # Alleen update als de nieuwe waarde anders is
-                    if dev.sValue != str(value):
-                        UpdateDevice(unit, 0, value)
-
-            # Boiler waarden bijwerken
-            if 'boilerPressure' in data and data['boilerPressure'] is not None:
-                safe_update(boilerPressure, float(data['boilerPressure']))
-
-            if 'boilerSetpoint' in data and data['boilerSetpoint'] is not None:
-                safe_update(boilerSetPoint, float(data['boilerSetpoint']))
-
-            if 'boilerModulationLevel' in data and data['boilerModulationLevel'] is not None:
-                safe_update(boilerModulation, int(data['boilerModulationLevel']))
-
+            
+            # Gebruik de nieuwe safeUpdate voor minder ruis in de logs
+            if data.get('boilerPressure') is not None:
+                self.safeUpdate(boilerPressure, 0, str(data['boilerPressure']))
+            if data.get('boilerSetpoint') is not None:
+                self.safeUpdate(boilerSetPoint, 0, str(data['boilerSetpoint']))
+            if data.get('boilerModulationLevel') is not None:
+                self.safeUpdate(boilerModulation, 0, str(data['boilerModulationLevel']))
         except Exception as e:
-            Domoticz.Error(f"Fout bij verwerken boiler JSON: {e}")
+            Domoticz.Debug(f"Boiler JSON parse error: {e}")
 
     # --- Zwave bijwerken ---
     def updateZwaveDevices(self, Response):
