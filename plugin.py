@@ -1,11 +1,9 @@
-# Toon Plugin for Domoticz
-# 2.6.4 icons added
-#       cleanup double entries
+
 """
-<plugin key="RootedToonPlug" name="Toon Rooted" author="MadPatrick" version="2.6.6" externallink="https://github.com/MadPatrick/domoticz_toon">
+<plugin key="RootedToonPlug" name="Toon Rooted" author="MadPatrick" version="2.6.7" externallink="https://github.com/MadPatrick/domoticz_toon">
       <description>
           <br/><h2>Domoticz Plugin for Toon (Rooted)</h2>
-          <br/>Version: 2.6.6
+          <br/>Version: 2.6.7
           <br/><br/>
           This plugin allows Domoticz to communicate with a Rooted Toon thermostat. Its main functionalities are:
           <ul>
@@ -70,8 +68,8 @@
         </param>
         <param field="Mode6" label="Debug logging" width="150px">
             <options>
-                <option label="True" value="Debug"/>
-                <option label="False" value="Normal" default="true"/>
+                <option label="On" value="Debug"/>
+                <option label="Off" value="Normal" default="true"/>
             </options>
         </param>
     </params>
@@ -117,38 +115,34 @@ class BasePlugin:
         self.sceneCounter = 0
         self.errorCooldown = 0
         self.lastErrorTime = None
+        # FIX 1: Initialiseer image IDs zodat onStart niet crasht als icon packs falen
+        self.imageID = 0
+        self.imageInvID = 0
+        # Gecachede interval waarden om herhaald parsen te vermijden
+        self.heartbeat_interval = 60
+        self.scene_interval = 3600
 
-    # --- Device helper ---
-    # --- Device helper ---
     # --- Device helper ---
     def createDeviceIfNotExists(self, unit, name, typeName=None, type_=None,
                                 subtype=None, options=None, used=1, image=None):
         if unit not in Devices:
-            # Maak een dictionary met de basis parameters die de API accepteert
             params = {
                 "Name": name,
                 "Unit": unit,
                 "Used": used
             }
-            
-            # Voeg optionele parameters toe
             if typeName: params["TypeName"] = typeName
             if type_ is not None: params["Type"] = type_
             if subtype is not None: params["Subtype"] = subtype
             if options: params["Options"] = options
             if image is not None: params["Image"] = image
 
-            # 1. Maak het device aan
             Domoticz.Device(**params).Create()
-            
-            # 2. Update direct naar 0 om de 'invalid value' error te voorkomen
+
             if unit in Devices:
-                # Voor een gasmeter is "0" een geldige startwaarde
-                # Voor P1 elektra is "0;0;0;0;0;0" veiliger, maar we beginnen met "0"
                 initialValue = "0"
                 if unit == p1electricity:
                     initialValue = "0;0;0;0;0;0"
-                
                 Devices[unit].Update(nValue=0, sValue=initialValue)
                 Domoticz.Log(f"Device '{name}' (Unit {unit}) initialized to 0")
 
@@ -157,7 +151,6 @@ class BasePlugin:
         paramList = []
         detected_version = None
 
-        # --- Handmatige Mode5 check ---
         if Parameters["Mode5"]:
             paramList = Parameters["Mode5"].split(";")
             if len(paramList) == 5:
@@ -168,7 +161,6 @@ class BasePlugin:
                 Domoticz.Log("Mode5 set, but wrong number of addresses (5 expected)")
                 paramList = []
 
-        # --- Automatische detectie ---
         if not paramList:
             detected_version = "niet gedetecteerd"
             try:
@@ -179,7 +171,6 @@ class BasePlugin:
                         if "internalAddress" in dev
                     ]
 
-                    # --- Alleen geldige meter-adressen gebruiken (cijfer of cijfer.cijfer) ---
                     valid_addresses = [
                         addr for addr in internal_addresses
                         if addr.replace(".", "").isdigit()
@@ -189,42 +180,31 @@ class BasePlugin:
                         Domoticz.Log("WARNING: No valid meter addresses detected")
                         return
 
-                    # --- Verzamel unieke prefixes ---
                     prefixes = set(addr.split(".")[0] if "." in addr else addr for addr in valid_addresses)
 
-                    # --- Verzamel unieke prefixes ---
-#                    prefixes = set(addr.split(".")[0] if "." in addr else addr for addr in valid_addresses)
-
-                    # Kies de prefix met de meeste meters
                     detected_prefix = max(prefixes, key=lambda p: sum(1 for a in valid_addresses if a.startswith(p + ".")))
 
-                    # --- Suffixes per Mode4 (orde = gas, ednt, edlt, ernt, erlt) ---
                     if Parameters["Mode4"] == "v1":
                         suffixes = ["1","3","5","4","6"]
                     else:  # v2
                         suffixes = ["1","4","6","5","7"]
 
-                    # --- Maak volledige paramList ---
                     paramList = [f"{detected_prefix}.{s}" for s in suffixes]
 
-                    # --- Koppel devices ---
                     if len(paramList) == 5:
                         self.ia_gas, self.ia_ednt, self.ia_edlt, self.ia_ernt, self.ia_erlt = paramList
                         detected_version = f"{Parameters['Mode4']} ({detected_prefix}.x)"
-#                        Domoticz.Log(f"Automatic P1-detection used: {detected_version}")
 
             except Exception as e:
                 detected_version = "error"
                 Domoticz.Log(f"Error with automatic detection of Zwave versie: {e}")
 
-        # --- Log de uiteindelijke P1-devices ---
         Domoticz.Log(
             f"P1-devices {detected_version} : Gas={self.ia_gas}, DeliveredNT={self.ia_ednt}, "
             f"DeliveredLT={self.ia_edlt}, ReceivedNT={self.ia_ernt}, "
             f"ReceivedLT={self.ia_erlt}"
         )
 
-        # --- Devices aanmaken (Gas, Electriciteit, etc.) ---
         p1_devices = [
             {"unit": gas, "name": "Gas", "typeName": "Gas"},
             {"unit": electricity, "name": "Electriciteit", "typeName": "kWh", "used": 0},
@@ -243,15 +223,21 @@ class BasePlugin:
 
     # --- onStart ---
     def onStart(self):
-        Domoticz.Log(f"Plugin started, version {Parameters['Version']}")
+        Domoticz.Log(f"Starting Plugin version {Parameters['Version']}")
+
+        # FIX 7: Sla interval waarden eenmalig op als instance variabelen
+        self.heartbeat_interval = int(Parameters['Mode2'])
+        self.scene_interval = int(Parameters['Mode1'])
+
         if Parameters["Mode3"] == "Yes":
             self.useZwave = True
             Domoticz.Log("P1-data Collection Enabled")
 
-        # Stel debug niveau in op basis van Mode6
         if Parameters["Mode6"] == "Debug":
             Domoticz.Debugging(1)
             Domoticz.Log("Debug logging enabled")
+            # FIX: DumpConfigToLog aangeroepen als debug actief is (was nergens aangeroepen)
+            self._dumpConfigToLog()
         else:
             Domoticz.Debugging(0)
 
@@ -293,27 +279,24 @@ class BasePlugin:
 
         for dev in devices_to_create:
             self.createDeviceIfNotExists(
-            unit=dev["unit"],
-            name=dev["name"],
-            typeName=dev.get("typeName"),
-            type_=dev.get("type"),
-            subtype=dev.get("subtype"),
-            options=dev.get("options"),
-            used=dev.get("used", 1),
-            image=dev.get("image")
+                unit=dev["unit"],
+                name=dev["name"],
+                typeName=dev.get("typeName"),
+                type_=dev.get("type"),
+                subtype=dev.get("subtype"),
+                options=dev.get("options"),
+                used=dev.get("used", 1),
+                image=dev.get("image")
             )
 
         if self.useZwave:
             self.setupP1Devices()
 
         self.fetchScenes()
-        Domoticz.Heartbeat(int(Parameters['Mode2']))
+        Domoticz.Heartbeat(self.heartbeat_interval)
 
-        # Toon refresh instellingen bij start
-        scene_interval = int(Parameters['Mode1'])//60       # in seconden
-        heartbeat_interval = int(Parameters['Mode2'])   # in seconden
-        Domoticz.Log(f"Heartbeat interval: {heartbeat_interval} min")
-        Domoticz.Log(f"Scenes refresh interval: {scene_interval} sec")
+        Domoticz.Log(f"Heartbeat interval: {self.heartbeat_interval} sec")
+        Domoticz.Log(f"Scenes refresh interval: {self.scene_interval // 60} min")
 
     def onStop(self):
         Domoticz.Log("Plugin stopped")
@@ -349,11 +332,9 @@ class BasePlugin:
         if self.lastErrorTime and self.errorCooldown > 0:
             elapsed = time() - self.lastErrorTime
             if elapsed < self.errorCooldown:
-                # Nog in wachttijd -> heartbeat wordt overgeslagen
                 Domoticz.Debug(f"In cooldown ({int(self.errorCooldown - elapsed)}s resterend), heartbeat overgeslagen.")
                 return
             else:
-                # Cooldown voorbij -> reset
                 Domoticz.Log("Toon: cooldown ended, trying to reconnect.")
                 self.errorCooldown = 0
                 self.lastErrorTime = None
@@ -362,8 +343,8 @@ class BasePlugin:
         if data:
             self.updateThermostatDevices(data)
 
-        # TEXT fetch for boiler
-        data = self.fetchText("/boilerstatus/boilervalues.txt")
+        # FIX 2: boilervalues.txt is JSON ondanks de .txt extensie â€” fetchJson gebruiken
+        data = self.fetchJson("/boilerstatus/boilervalues.txt")
         if data:
             self.updateBoilerDevices(data)
 
@@ -372,12 +353,13 @@ class BasePlugin:
             if zw:
                 self.updateZwaveDevices(zw)
 
-        self.sceneCounter += int(Parameters['Mode2'])
-        if self.sceneCounter >= int(Parameters['Mode1']):
+        # FIX 7: gebruik gecachede interval waarden
+        self.sceneCounter += self.heartbeat_interval
+        if self.sceneCounter >= self.scene_interval:
             self.fetchScenes()
             self.sceneCounter = 0
 
-    # --- Fetch functies met nette logging ---
+    # --- Fetch functies ---
     def fetchJson(self, path):
         try:
             url = f"http://{Parameters['Address']}:{Parameters['Port']}{path}"
@@ -389,23 +371,12 @@ class BasePlugin:
             self.startCooldown()
             return None
 
-    def fetchText(self, path):
-        try:
-            url = f"http://{Parameters['Address']}:{Parameters['Port']}{path}"
-            r = requests.get(url, timeout=10)
-            r.raise_for_status()
-            return r.text
-        except Exception as e:
-            Domoticz.Log(f"Cannot fetch '{path}': {cleanError(e)}. Cooldown 300s.")
-            self.startCooldown()
-            return None
+    # fetchText verwijderd: boilervalues.txt is JSON en wordt nu via fetchJson opgehaald
 
     # --- Scenes ophalen ---
     def fetchScenes(self):
-        # Bewaar oude scene_map om te vergelijken
         old_scene_map = self.scene_map.copy()
 
-        # Ophalen van de scene-data van Toon
         data = self.fetchJson("/hcb_config?action=getObjectConfigTree&package=happ_thermstat&internalAddress=thermostatStates")
         if data and 'states' in data and len(data['states']) > 0:
             state_list = data['states'][0]['state']
@@ -416,7 +387,6 @@ class BasePlugin:
                 if id_ <= 3:
                     self.scene_map[str(self.idToScene(id_))] = temp
 
-            # Log alleen als de scene-instellingen daadwerkelijk zijn veranderd
             if self.scene_map != old_scene_map:
                 Domoticz.Log("Toon Scene settings updated:")
                 for scene_id, temp in sorted(self.scene_map.items()):
@@ -425,13 +395,11 @@ class BasePlugin:
             else:
                 Domoticz.Debug("Toon scene settings retrieved, no changes")
 
-        # Controleer of de actieve scene moet worden bijgewerkt
         toon_scene = self.getActiveSceneFromToon()
         if toon_scene is not None:
             current_scene_val = SafeInt(Devices[scene].sValue) if scene in Devices else None
             if current_scene_val != toon_scene:
                 UpdateDevice(scene, 0, str(toon_scene))
-
 
     def idToScene(self, id_):
         mapping = {0: 40, 1: 30, 2: 20, 3: 10}
@@ -482,9 +450,11 @@ class BasePlugin:
         if 'burnerInfo' in Response:
             UpdateDevice(boilerState, 0, burnerInfos[int(Response['burnerInfo'])])
         if 'currentModulationLevel' in Response:
-            UpdateDevice(boilerModulation, 0, int(Response['currentModulationLevel']))
+            # FIX 3: sValue moet altijd str zijn â€” expliciete conversie
+            UpdateDevice(boilerModulation, 0, str(int(Response['currentModulationLevel'])))
         if 'currentInternalBoilerSetpoint' in Response:
-            UpdateDevice(boilerSetPoint, 0, float(Response['currentInternalBoilerSetpoint']))
+            # FIX 3: sValue moet altijd str zijn â€” expliciete conversie
+            UpdateDevice(boilerSetPoint, 0, str(float(Response['currentInternalBoilerSetpoint'])))
 
     def updateProgramInfo(self, Response):
         if all(k in Response for k in ("nextProgram","nextSetpoint","nextTime","nextState")):
@@ -495,7 +465,6 @@ class BasePlugin:
                 strInfo = "Program is off"
             else:
                 dt = datetime.fromtimestamp(int(Response["nextTime"]))
-#                strNextTime = dt.strftime("%Y-%d-%m %H:%M:%S")
                 strNextTime = dt.strftime("%d-%m-%Y %H:%M:%S")
                 strNextProgram = strPrograms[int(Response["nextState"])]
                 strNextSetpoint = "%.1f" % (float(Response["nextSetpoint"]) / 100)
@@ -504,20 +473,15 @@ class BasePlugin:
                 UpdateDevice(Unit=programInfo, nValue=0, sValue=strInfo)
                 Domoticz.Debug(f"ProgramInfo bijgewerkt: {strInfo}")
 
-    def updateBoilerDevices(self, Response):
-    #Verwerkt de boilerstatus vanuit JSON en update alleen als de waarde verandert.
+    # FIX 2: updateBoilerDevices ontvangt nu al een dict (via fetchJson), geen json.loads meer nodig
+    def updateBoilerDevices(self, data):
         try:
-            data = json.loads(Response)
-
-            # Helper functie: update alleen als waarde verandert
             def safe_update(unit, value):
                 if unit in Devices:
                     dev = Devices[unit]
-                    # Alleen update als de nieuwe waarde anders is
                     if dev.sValue != str(value):
-                        UpdateDevice(unit, 0, value)
+                        UpdateDevice(unit, 0, str(value))
 
-            # Boiler waarden bijwerken
             if 'boilerPressure' in data and data['boilerPressure'] is not None:
                 safe_update(boilerPressure, float(data['boilerPressure']))
 
@@ -528,7 +492,7 @@ class BasePlugin:
                 safe_update(boilerModulation, int(data['boilerModulationLevel']))
 
         except Exception as e:
-            Domoticz.Error(f"Fout bij verwerken boiler JSON: {e}")
+            Domoticz.Error(f"Fout bij verwerken boiler data: {e}")
 
     # --- Zwave bijwerken ---
     def updateZwaveDevices(self, Response):
@@ -577,6 +541,13 @@ class BasePlugin:
         except Exception as e:
             Domoticz.Log(f"Error processing P1 values: {e}")
 
+    # --- Debug helper (was losse functie, nu privÃ© methode) ---
+    def _dumpConfigToLog(self):
+        Domoticz.Debug("Parameters:")
+        for x in Parameters:
+            Domoticz.Debug(f"'{x}':'{Parameters[x]}'")
+
+
 # --- Global instance ---
 global _plugin
 _plugin = BasePlugin()
@@ -586,11 +557,6 @@ def onCommand(Unit, Command, Level, Hue): _plugin.onCommand(Unit, Command, Level
 def onHeartbeat(): _plugin.onHeartbeat()
 
 # --- Helpers ---
-def DumpConfigToLog():
-    Domoticz.Debug("Parameters:")
-    for x in Parameters:
-        Domoticz.Debug(f"'{x}':'{Parameters[x]}'")
-
 def cleanError(e):
     msg = str(e).lower()
     if "refused" in msg: return "Verbinding geweigerd"
@@ -614,7 +580,6 @@ def UpdateDevice(Unit, nValue, sValue, TimedOut=0):
                 readable_new = sValue
                 readable_old = old_s
 
-                # Leesbare namen
                 if Unit == scene:
                     scene_labels = {"10": "Weg", "20": "Slapen", "30": "Thuis", "40": "Comfort", "50": "Manual"}
                     readable_new = scene_labels.get(str(sValue), str(sValue))
@@ -634,10 +599,7 @@ def UpdateDevice(Unit, nValue, sValue, TimedOut=0):
 
                 silent_units = [
                     gas, electricity, genElectricity, p1electricity,
-                    boilerSetPoint,
-                    curTemp,
-                    boilerModulation,
-                    boilerPressure
+                    boilerSetPoint, curTemp, boilerModulation, boilerPressure
                 ]
 
                 if Unit not in silent_units:
