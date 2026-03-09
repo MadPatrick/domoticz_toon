@@ -1,9 +1,8 @@
-
 """
-<plugin key="RootedToonPlug" name="Toon Rooted" author="MadPatrick" version="2.6.7" externallink="https://github.com/MadPatrick/domoticz_toon">
+<plugin key="RootedToonPlug" name="Toon Rooted" author="MadPatrick" version="2.7.0" externallink="https://github.com/MadPatrick/domoticz_toon">
       <description>
           <br/><h2>Domoticz Plugin for Toon (Rooted)</h2>
-          <br/>Version: 2.6.7
+          <br/>Version: 2.7.0
           <br/><br/>
           This plugin allows Domoticz to communicate with a Rooted Toon thermostat. Its main functionalities are:
           <ul>
@@ -115,12 +114,14 @@ class BasePlugin:
         self.sceneCounter = 0
         self.errorCooldown = 0
         self.lastErrorTime = None
-        # FIX 1: Initialiseer image IDs zodat onStart niet crasht als icon packs falen
         self.imageID = 0
         self.imageInvID = 0
-        # Gecachede interval waarden om herhaald parsen te vermijden
         self.heartbeat_interval = 60
         self.scene_interval = 3600
+        # Verwachte dagelijkse reboot window
+        self.expectedDowntimeStart = "03:00"
+        self.expectedDowntimeEnd   = "04:00"
+        self.expectedDowntimeLogged = False
 
     # --- Device helper ---
     def createDeviceIfNotExists(self, unit, name, typeName=None, type_=None,
@@ -225,7 +226,6 @@ class BasePlugin:
     def onStart(self):
         Domoticz.Log(f"Starting Plugin version {Parameters['Version']}")
 
-        # FIX 7: Sla interval waarden eenmalig op als instance variabelen
         self.heartbeat_interval = int(Parameters['Mode2'])
         self.scene_interval = int(Parameters['Mode1'])
 
@@ -236,7 +236,6 @@ class BasePlugin:
         if Parameters["Mode6"] == "Debug":
             Domoticz.Debugging(1)
             Domoticz.Log("Debug logging enabled")
-            # FIX: DumpConfigToLog aangeroepen als debug actief is (was nergens aangeroepen)
             self._dumpConfigToLog()
         else:
             Domoticz.Debugging(0)
@@ -327,6 +326,10 @@ class BasePlugin:
         self.lastErrorTime = time()
         Domoticz.Log(f"Error detected and cooldown activated for {seconds} seconds.")
 
+    def isExpectedDowntime(self):
+        now = datetime.now().strftime("%H:%M")
+        return self.expectedDowntimeStart <= now <= self.expectedDowntimeEnd
+
     def onHeartbeat(self):
         # --- Cooldown check ---
         if self.lastErrorTime and self.errorCooldown > 0:
@@ -339,24 +342,32 @@ class BasePlugin:
                 self.errorCooldown = 0
                 self.lastErrorTime = None
 
-        data = self.fetchJson("/happ_thermstat?action=getThermostatInfo")
-        if data:
-            self.updateThermostatDevices(data)
+        results = []
 
-        # FIX 2: boilervalues.txt is JSON ondanks de .txt extensie â€” fetchJson gebruiken
-        data = self.fetchJson("/boilerstatus/boilervalues.txt")
-        if data:
-            self.updateBoilerDevices(data)
+        thermostat_data = self.fetchJson("/happ_thermstat?action=getThermostatInfo")
+        results.append(thermostat_data is not None)
+        if thermostat_data:
+            self.updateThermostatDevices(thermostat_data)
+
+        boiler_data = self.fetchJson("/boilerstatus/boilervalues.txt")
+        results.append(boiler_data is not None)
+        if boiler_data:
+            self.updateBoilerDevices(boiler_data)
 
         if self.useZwave:
             zw = self.fetchJson("/hdrv_zwave?action=getDevices.json")
+            results.append(zw is not None)
             if zw:
                 self.updateZwaveDevices(zw)
 
-        # FIX 7: gebruik gecachede interval waarden
+        # Eenmalige melding pas als ALLE fetches succesvol waren
+        if all(results) and self.expectedDowntimeLogged:
+            Domoticz.Log("Toon: verbinding hersteld na verwachte herstart.")
+            self.expectedDowntimeLogged = False
+
         self.sceneCounter += self.heartbeat_interval
         if self.sceneCounter >= self.scene_interval:
-            self.fetchScenes()
+            self.fetchScenes(thermostat_data=thermostat_data)
             self.sceneCounter = 0
 
     # --- Fetch functies ---
@@ -367,14 +378,18 @@ class BasePlugin:
             r.raise_for_status()
             return r.json()
         except Exception as e:
-            Domoticz.Log(f"Cannot fetch '{path}': {cleanError(e)}. Cooldown 300s.")
-            self.startCooldown()
-            return None
-
-    # fetchText verwijderd: boilervalues.txt is JSON en wordt nu via fetchJson opgehaald
+            if self.isExpectedDowntime():
+                if not self.expectedDowntimeLogged:
+                    Domoticz.Debug(f"Toon: verwachte downtime, fetch overgeslagen ({path})")
+                    self.expectedDowntimeLogged = True
+                return None
+            else:
+                Domoticz.Error(f"Cannot fetch '{path}': {cleanError(e)}. Cooldown 300s.")
+                self.startCooldown()
+                return None
 
     # --- Scenes ophalen ---
-    def fetchScenes(self):
+    def fetchScenes(self, thermostat_data=None):
         old_scene_map = self.scene_map.copy()
 
         data = self.fetchJson("/hcb_config?action=getObjectConfigTree&package=happ_thermstat&internalAddress=thermostatStates")
@@ -395,8 +410,12 @@ class BasePlugin:
             else:
                 Domoticz.Debug("Toon scene settings retrieved, no changes")
 
-        toon_scene = self.getActiveSceneFromToon()
-        if toon_scene is not None:
+        # Gebruik meegegeven thermostat_data indien beschikbaar, anders nieuwe call
+        if thermostat_data is None:
+            thermostat_data = self.fetchJson("/happ_thermstat?action=getThermostatInfo")
+
+        if thermostat_data and 'activeState' in thermostat_data:
+            toon_scene = self.idToScene(int(thermostat_data['activeState']))
             current_scene_val = SafeInt(Devices[scene].sValue) if scene in Devices else None
             if current_scene_val != toon_scene:
                 UpdateDevice(scene, 0, str(toon_scene))
@@ -404,16 +423,6 @@ class BasePlugin:
     def idToScene(self, id_):
         mapping = {0: 40, 1: 30, 2: 20, 3: 10}
         return mapping.get(id_, 50)
-
-    def getActiveSceneFromToon(self):
-        data = self.fetchJson("/happ_thermstat?action=getActiveState")
-        if data and "state" in data:
-            try:
-                toon_state = int(data["state"])
-                return self.idToScene(toon_state)
-            except:
-                pass
-        return None
 
     def updateSceneFromSetpoint(self, setpoint):
         matched_scene_id = None
@@ -438,11 +447,14 @@ class BasePlugin:
         if 'currentSetpoint' in Response:
             setpoint = float(Response['currentSetpoint']) / 100
             UpdateDevice(setTemp, 0, "%.1f" % setpoint)
-            toon_scene = self.getActiveSceneFromToon()
-            if toon_scene is not None:
+
+            # Gebruik activeState uit dezelfde response â€” geen aparte getActiveState-call
+            if 'activeState' in Response:
+                toon_scene = self.idToScene(int(Response['activeState']))
                 current_scene_val = SafeInt(Devices[scene].sValue) if scene in Devices else None
                 if current_scene_val != toon_scene:
                     UpdateDevice(scene, 0, str(toon_scene))
+
             self.updateSceneFromSetpoint(setpoint)
             self.updateProgramInfo(Response)
         if 'programState' in Response:
@@ -450,11 +462,7 @@ class BasePlugin:
         if 'burnerInfo' in Response:
             UpdateDevice(boilerState, 0, burnerInfos[int(Response['burnerInfo'])])
         if 'currentModulationLevel' in Response:
-            # FIX 3: sValue moet altijd str zijn â€” expliciete conversie
             UpdateDevice(boilerModulation, 0, str(int(Response['currentModulationLevel'])))
-        if 'currentInternalBoilerSetpoint' in Response:
-            # FIX 3: sValue moet altijd str zijn â€” expliciete conversie
-            UpdateDevice(boilerSetPoint, 0, str(float(Response['currentInternalBoilerSetpoint'])))
 
     def updateProgramInfo(self, Response):
         if all(k in Response for k in ("nextProgram","nextSetpoint","nextTime","nextState")):
@@ -473,7 +481,6 @@ class BasePlugin:
                 UpdateDevice(Unit=programInfo, nValue=0, sValue=strInfo)
                 Domoticz.Debug(f"ProgramInfo bijgewerkt: {strInfo}")
 
-    # FIX 2: updateBoilerDevices ontvangt nu al een dict (via fetchJson), geen json.loads meer nodig
     def updateBoilerDevices(self, data):
         try:
             def safe_update(unit, value):
@@ -541,7 +548,7 @@ class BasePlugin:
         except Exception as e:
             Domoticz.Log(f"Error processing P1 values: {e}")
 
-    # --- Debug helper (was losse functie, nu privÃ© methode) ---
+    # --- Debug helper ---
     def _dumpConfigToLog(self):
         Domoticz.Debug("Parameters:")
         for x in Parameters:
