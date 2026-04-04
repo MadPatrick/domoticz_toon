@@ -324,7 +324,7 @@ class BasePlugin:
     def startCooldown(self, seconds=300):
         self.errorCooldown = seconds
         self.lastErrorTime = time()
-        Domoticz.Log(f"Error detected and cooldown activated for {seconds} seconds.")
+        Domoticz.Log(f"Toon: verbinding mislukt. Cooldown van {seconds}s gestart, volgende poging over {seconds // 60} minuten.")
 
     def isExpectedDowntime(self):
         now = datetime.now().strftime("%H:%M")
@@ -338,9 +338,26 @@ class BasePlugin:
                 Domoticz.Debug(f"In cooldown ({int(self.errorCooldown - elapsed)}s resterend), heartbeat overgeslagen.")
                 return
             else:
-                Domoticz.Log("Toon: cooldown ended, trying to reconnect.")
+                # Cooldown voorbij â€” eerst verbinding testen voor de error wordt gelogd
+                Domoticz.Log("Toon: cooldown voorbij, verbinding wordt getest...")
                 self.errorCooldown = 0
                 self.lastErrorTime = None
+
+                test = self.fetchJson("/happ_thermstat?action=getThermostatInfo")
+                if test is None:
+                    # fetchJson heeft zelf al een nieuwe cooldown gestart via startCooldown()
+                    Domoticz.Error("Toon: geen verbinding na cooldown. Controleer het apparaat.")
+                    return
+                else:
+                    Domoticz.Log("Toon: verbinding hersteld na cooldown.")
+                    self.updateThermostatDevices(test)
+                    # Laat de rest van onHeartbeat doorlopen zonder thermostat opnieuw op te halen
+                    self._doBoilerAndZwave()
+                    self.sceneCounter += self.heartbeat_interval
+                    if self.sceneCounter >= self.scene_interval:
+                        self.fetchScenes(thermostat_data=test)
+                        self.sceneCounter = 0
+                    return
 
         results = []
 
@@ -349,16 +366,7 @@ class BasePlugin:
         if thermostat_data:
             self.updateThermostatDevices(thermostat_data)
 
-        boiler_data = self.fetchJson("/boilerstatus/boilervalues.txt")
-        results.append(boiler_data is not None)
-        if boiler_data:
-            self.updateBoilerDevices(boiler_data)
-
-        if self.useZwave:
-            zw = self.fetchJson("/hdrv_zwave?action=getDevices.json")
-            results.append(zw is not None)
-            if zw:
-                self.updateZwaveDevices(zw)
+        self._doBoilerAndZwave(results)
 
         # Eenmalige melding pas als ALLE fetches succesvol waren
         if all(results) and self.expectedDowntimeLogged:
@@ -369,6 +377,21 @@ class BasePlugin:
         if self.sceneCounter >= self.scene_interval:
             self.fetchScenes(thermostat_data=thermostat_data)
             self.sceneCounter = 0
+
+    def _doBoilerAndZwave(self, results=None):
+        """Haal boiler- en Z-wave data op en verwerk ze. Optioneel resultatenlijst bijhouden."""
+        boiler_data = self.fetchJson("/boilerstatus/boilervalues.txt")
+        if results is not None:
+            results.append(boiler_data is not None)
+        if boiler_data:
+            self.updateBoilerDevices(boiler_data)
+
+        if self.useZwave:
+            zw = self.fetchJson("/hdrv_zwave?action=getDevices.json")
+            if results is not None:
+                results.append(zw is not None)
+            if zw:
+                self.updateZwaveDevices(zw)
 
     # --- Fetch functies ---
     def fetchJson(self, path):
@@ -384,7 +407,6 @@ class BasePlugin:
                     self.expectedDowntimeLogged = True
                 return None
             else:
-                Domoticz.Error(f"Cannot fetch '{path}': {cleanError(e)}. Cooldown 300s.")
                 self.startCooldown()
                 return None
 
@@ -503,45 +525,59 @@ class BasePlugin:
 
     # --- Zwave bijwerken ---
     def updateZwaveDevices(self, Response):
-        zwaveDeliveredNtFlow = '0'
-        zwaveDeliveredLtFlow = '0'
-        zwaveDeliveredNtQ = '0'
-        zwaveDeliveredLtQ = '0'
-        zwaveReceivedNtFlow = '0'
-        zwaveReceivedLtFlow = '0'
-        zwaveReceivedNtQ = '0'
-        zwaveReceivedLtQ = '0'
+        def safe_float(value, fallback=0.0):
+            try:
+                result = float(value)
+                if result != result:  # NaN check
+                    return fallback
+                return result
+            except (ValueError, TypeError):
+                return fallback
+
+        zwaveDeliveredNtFlow = 0.0
+        zwaveDeliveredLtFlow = 0.0
+        zwaveDeliveredNtQ = 0.0
+        zwaveDeliveredLtQ = 0.0
+        zwaveReceivedNtFlow = 0.0
+        zwaveReceivedLtFlow = 0.0
+        zwaveReceivedNtQ = 0.0
+        zwaveReceivedLtQ = 0.0
+
         for zwaveDev in Response:
             info = Response[zwaveDev]
             if 'internalAddress' not in info:
                 continue
             ia = info['internalAddress']
             if ia == self.ia_gas:
-                UpdateDevice(Unit=gas, nValue=0, sValue=str(int(float(info.get('CurrentGasQuantity', 0)))))
+                gas_val = safe_float(info.get('CurrentGasQuantity', 0))
+                UpdateDevice(Unit=gas, nValue=0, sValue=str(int(gas_val)))
             elif ia == self.ia_ednt:
-                zwaveDeliveredNtFlow = info.get('CurrentElectricityFlow', '0')
-                zwaveDeliveredNtQ = info.get('CurrentElectricityQuantity', '0')
+                zwaveDeliveredNtFlow = safe_float(info.get('CurrentElectricityFlow', 0))
+                zwaveDeliveredNtQ    = safe_float(info.get('CurrentElectricityQuantity', 0))
             elif ia == self.ia_edlt:
-                zwaveDeliveredLtFlow = info.get('CurrentElectricityFlow', '0')
-                zwaveDeliveredLtQ = info.get('CurrentElectricityQuantity', '0')
+                zwaveDeliveredLtFlow = safe_float(info.get('CurrentElectricityFlow', 0))
+                zwaveDeliveredLtQ    = safe_float(info.get('CurrentElectricityQuantity', 0))
             elif ia == self.ia_ernt:
-                zwaveReceivedNtFlow = info.get('CurrentElectricityFlow', '0')
-                zwaveReceivedNtQ = info.get('CurrentElectricityQuantity', '0')
+                zwaveReceivedNtFlow = safe_float(info.get('CurrentElectricityFlow', 0))
+                zwaveReceivedNtQ    = safe_float(info.get('CurrentElectricityQuantity', 0))
             elif ia == self.ia_erlt:
-                zwaveReceivedLtFlow = info.get('CurrentElectricityFlow', '0')
-                zwaveReceivedLtQ = info.get('CurrentElectricityQuantity', '0')
+                zwaveReceivedLtFlow = safe_float(info.get('CurrentElectricityFlow', 0))
+                zwaveReceivedLtQ    = safe_float(info.get('CurrentElectricityQuantity', 0))
+
         try:
-            zwaveDeliveredFlow = str(int(float(zwaveDeliveredNtFlow)) + int(float(zwaveDeliveredLtFlow)))
-            zwaveDeliveredQ = str(int(float(zwaveDeliveredNtQ)) + int(float(zwaveDeliveredLtQ)))
-            UpdateDevice(Unit=electricity, nValue=0, sValue=zwaveDeliveredFlow + ";" + zwaveDeliveredQ)
-            zwaveReceivedFlow = str(int(float(zwaveReceivedNtFlow)) + int(float(zwaveReceivedLtFlow)))
-            zwaveReceivedQ = str(int(float(zwaveReceivedNtQ)) + int(float(zwaveReceivedLtQ)))
-            UpdateDevice(Unit=genElectricity, nValue=0, sValue=zwaveReceivedFlow + ";" + zwaveReceivedQ)
+            zwaveDeliveredFlow = int(zwaveDeliveredNtFlow) + int(zwaveDeliveredLtFlow)
+            zwaveDeliveredQ    = int(zwaveDeliveredNtQ)    + int(zwaveDeliveredLtQ)
+            UpdateDevice(Unit=electricity, nValue=0, sValue=f"{zwaveDeliveredFlow};{zwaveDeliveredQ}")
+
+            zwaveReceivedFlow = int(zwaveReceivedNtFlow) + int(zwaveReceivedLtFlow)
+            zwaveReceivedQ    = int(zwaveReceivedNtQ)    + int(zwaveReceivedLtQ)
+            UpdateDevice(Unit=genElectricity, nValue=0, sValue=f"{zwaveReceivedFlow};{zwaveReceivedQ}")
+
             UpdateDevice(Unit=p1electricity, nValue=0, sValue="{};{};{};{};{};{}".format(
-                int(float(zwaveDeliveredNtQ)),
-                int(float(zwaveDeliveredLtQ)),
-                int(float(zwaveReceivedNtQ)),
-                int(float(zwaveReceivedLtQ)),
+                int(zwaveDeliveredNtQ),
+                int(zwaveDeliveredLtQ),
+                int(zwaveReceivedNtQ),
+                int(zwaveReceivedLtQ),
                 zwaveDeliveredFlow,
                 zwaveReceivedFlow
             ))
