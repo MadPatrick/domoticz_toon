@@ -303,7 +303,7 @@ class BasePlugin:
     def onCommand(self, Unit, Command, Level, Hue):
         Domoticz.Debug(f"onCommand Unit {Unit} Command {Command} Level {Level}")
         if Unit == setTemp:
-            setpoint = int(Level * 100)
+            setpoint = int(round(Level * 100))
             self.fetchJson(f"/happ_thermstat?action=setSetpoint&Setpoint={setpoint}")
             UpdateDevice(setTemp, 0, str(Level))
             self.updateSceneFromSetpoint(Level)
@@ -460,7 +460,7 @@ class BasePlugin:
             if newState is not None:
                 self.fetchJson(f"/happ_thermstat?action=changeSchemeState&state=2&temperatureState={newState}")
         elif matched_scene_id is None and current_scene_val != 50:
-            UpdateDevice(scene, 50, "50")
+            UpdateDevice(scene, 0, "50")
 
     # --- Devices bijwerken ---
     def updateThermostatDevices(self, Response):
@@ -480,9 +480,13 @@ class BasePlugin:
             self.updateSceneFromSetpoint(setpoint)
             self.updateProgramInfo(Response)
         if 'programState' in Response:
-            UpdateDevice(autoProgram, 0, programStates[int(Response['programState'])])
+            prog_idx = int(Response['programState'])
+            if 0 <= prog_idx < len(programStates):
+                UpdateDevice(autoProgram, 0, programStates[prog_idx])
         if 'burnerInfo' in Response:
-            UpdateDevice(boilerState, 0, burnerInfos[int(Response['burnerInfo'])])
+            burner_idx = int(Response['burnerInfo'])
+            if 0 <= burner_idx < len(burnerInfos):
+                UpdateDevice(boilerState, 0, burnerInfos[burner_idx])
         if 'currentModulationLevel' in Response:
             UpdateDevice(boilerModulation, 0, str(int(Response['currentModulationLevel'])))
 
@@ -499,7 +503,7 @@ class BasePlugin:
                 strNextProgram = strPrograms[int(Response["nextState"])]
                 strNextSetpoint = "%.1f" % (float(Response["nextSetpoint"]) / 100)
                 strInfo = f"Next program {strNextProgram} ({strNextSetpoint} C) at {strNextTime}"
-            if Devices[programInfo].sValue != strInfo:
+            if programInfo in Devices and Devices[programInfo].sValue != strInfo:
                 UpdateDevice(Unit=programInfo, nValue=0, sValue=strInfo)
                 Domoticz.Debug(f"ProgramInfo bijgewerkt: {strInfo}")
 
