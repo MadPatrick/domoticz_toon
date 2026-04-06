@@ -64,8 +64,8 @@ The plugin provides **bidirectional synchronization** and comprehensive monitori
 The Toon performs a daily reboot, typically between **03:00 and 04:00**. During this window the plugin suppresses error logging. You can customize this window by editing the `config.txt` file in the plugin directory:
 
 ```ini
-# Verwachte dagelijkse reboot window van de Toon
-# Tijden in HH:MM formaat (24-uurs)
+# Expected daily reboot window of the Toon
+# Times in HH:MM format (24-hour)
 DowntimeStart=03:00
 DowntimeEnd=04:00
 ```
@@ -108,13 +108,12 @@ If they are incorrect, you may need to specify the addresses manually:
 
 Set up the connection details and Z-Wave/P1 behavior of the plugin via the Domoticz hardware setup menu.
 
-<img width="790" height="454" alt="image" src="https://github.com/user-attachments/assets/43afbce6-5bee-4207-8e7e-d05a1d315090" />
-
+<img width="693" height="374" alt="image" src="https://github.com/user-attachments/assets/7ec88de3-7ca1-4554-a371-835a3ca6d8e5" />
 
 
 ## 📲 Installed Domoticz Devices
 
 A list of the devices created by the plugin in your Domoticz Devices tab.
+<img width="922" height="404" alt="image" src="https://github.com/user-attachments/assets/3bdb38ff-4f2e-4a1a-b2db-9d9cf0bdc621" />
 
-<img width="958" height="631" alt="image" src="https://github.com/user-attachments/assets/e53e3cbc-e336-4084-8a00-3e7b97b81666" />
 
