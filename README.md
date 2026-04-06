@@ -59,6 +59,21 @@ The plugin provides **bidirectional synchronization** and comprehensive monitori
 
 ---
 
+## 🕒 Configurable Downtime Window (`config.txt`)
+
+The Toon performs a daily reboot, typically between **03:00 and 04:00**. During this window the plugin suppresses error logging. You can customize this window by editing the `config.txt` file in the plugin directory:
+
+```ini
+# Verwachte dagelijkse reboot window van de Toon
+# Tijden in HH:MM formaat (24-uurs)
+DowntimeStart=03:00
+DowntimeEnd=04:00
+```
+
+If the file is missing, the plugin falls back to the built-in defaults (`03:00`–`04:00`). A log message will indicate which values are in use at startup.
+
+---
+
 ## 🔌 P1 / Z-Wave Address Configuration (Advanced)
 
 **⚠️ Use at your own risk.** The internal Z-Wave/P1 device addresses may vary across Toon versions and installations.

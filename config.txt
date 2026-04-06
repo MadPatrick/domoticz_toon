@@ -1,0 +1,4 @@
+# Expected daily reboot window of the Toon
+# Times in HH:MM format (24-hour)
+DowntimeStart=03:00
+DowntimeEnd=04:00
