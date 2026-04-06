@@ -1,4 +1,4 @@
-# Verwachte dagelijkse reboot window van de Toon
-# Tijden in HH:MM formaat (24-uurs)
+# Expected daily reboot window of the Toon
+# Times in HH:MM format (24-hour)
 DowntimeStart=03:00
 DowntimeEnd=04:00

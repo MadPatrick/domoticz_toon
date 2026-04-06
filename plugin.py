@@ -85,7 +85,7 @@ from time import time
 # --- Constants ---
 programStates = ['10','20','30']
 burnerInfos = ['10','20','30']
-strPrograms = ['Weg', 'Slapen', 'Thuis', 'Comfort','Manual']
+strPrograms = ['Weg', 'Slapen', 'Thuis', 'Comfort', 'Manual']
 
 # Device unit numbers
 curTemp = 1
@@ -119,16 +119,16 @@ class BasePlugin:
         self.imageInvID = 0
         self.heartbeat_interval = 60
         self.scene_interval = 3600
-        # Verwachte dagelijkse reboot window
+        # Expected daily reboot window
         self.expectedDowntimeStart = "03:00"
         self.expectedDowntimeEnd   = "04:00"
         self.expectedDowntimeLogged = False
 
-    # --- Config laden ---
+    # --- Load config ---
     def loadConfig(self):
         config_path = os.path.join(Parameters["HomeFolder"], "config.txt")
         if not os.path.isfile(config_path):
-            Domoticz.Log(f"config.txt niet gevonden ({config_path}), standaardwaarden gebruikt.")
+            Domoticz.Log(f"config.txt not found ({config_path}), using default values.")
             return
         try:
             with open(config_path, "r", encoding="utf-8") as f:
@@ -144,15 +144,15 @@ class BasePlugin:
                             if len(value) == 5 and value[2] == ":" and value[:2].isdigit() and value[3:].isdigit():
                                 self.expectedDowntimeStart = value
                             else:
-                                Domoticz.Log(f"Ongeldig formaat voor DowntimeStart: '{value}', standaardwaarde gebruikt.")
+                                Domoticz.Log(f"Invalid format for DowntimeStart: '{value}', using default value.")
                         elif key == "DowntimeEnd":
                             if len(value) == 5 and value[2] == ":" and value[:2].isdigit() and value[3:].isdigit():
                                 self.expectedDowntimeEnd = value
                             else:
-                                Domoticz.Log(f"Ongeldig formaat voor DowntimeEnd: '{value}', standaardwaarde gebruikt.")
-            Domoticz.Log(f"Verwachte downtime window: {self.expectedDowntimeStart} - {self.expectedDowntimeEnd}")
+                                Domoticz.Log(f"Invalid format for DowntimeEnd: '{value}', using default value.")
+            Domoticz.Log(f"Expected downtime window: {self.expectedDowntimeStart} - {self.expectedDowntimeEnd}")
         except Exception as e:
-            Domoticz.Log(f"Fout bij lezen config.txt: {e}")
+            Domoticz.Log(f"Error reading config.txt: {e}")
 
     # --- Device helper ---
     def createDeviceIfNotExists(self, unit, name, typeName=None, type_=None,
@@ -229,7 +229,7 @@ class BasePlugin:
 
             except Exception as e:
                 detected_version = "error"
-                Domoticz.Log(f"Error with automatic detection of Zwave versie: {e}")
+                Domoticz.Log(f"Error with automatic detection of Z-Wave version: {e}")
 
         Domoticz.Log(
             f"P1-devices {detected_version} : Gas={self.ia_gas}, DeliveredNT={self.ia_ednt}, "
@@ -358,7 +358,7 @@ class BasePlugin:
     def startCooldown(self, seconds=300):
         self.errorCooldown = seconds
         self.lastErrorTime = time()
-        Domoticz.Log(f"Toon: verbinding mislukt. Cooldown van {seconds}s gestart, volgende poging over {seconds // 60} minuten.")
+        Domoticz.Log(f"Toon: connection failed. Cooldown of {seconds}s started, next attempt in {seconds // 60} minutes.")
 
     def isExpectedDowntime(self):
         now = datetime.now().strftime("%H:%M")
@@ -369,23 +369,23 @@ class BasePlugin:
         if self.lastErrorTime and self.errorCooldown > 0:
             elapsed = time() - self.lastErrorTime
             if elapsed < self.errorCooldown:
-                Domoticz.Debug(f"In cooldown ({int(self.errorCooldown - elapsed)}s resterend), heartbeat overgeslagen.")
+                Domoticz.Debug(f"In cooldown ({int(self.errorCooldown - elapsed)}s remaining), heartbeat skipped.")
                 return
             else:
-                # Cooldown voorbij â€” eerst verbinding testen voor de error wordt gelogd
-                Domoticz.Log("Toon: cooldown voorbij, verbinding wordt getest...")
+                # Cooldown expired — test connection before logging the error
+                Domoticz.Log("Toon: cooldown expired, testing connection...")
                 self.errorCooldown = 0
                 self.lastErrorTime = None
 
                 test = self.fetchJson("/happ_thermstat?action=getThermostatInfo")
                 if test is None:
-                    # fetchJson heeft zelf al een nieuwe cooldown gestart via startCooldown()
-                    Domoticz.Error("Toon: geen verbinding na cooldown. Controleer het apparaat.")
+                    # fetchJson has already started a new cooldown via startCooldown()
+                    Domoticz.Error("Toon: no connection after cooldown. Please check the device.")
                     return
                 else:
-                    Domoticz.Log("Toon: verbinding hersteld na cooldown.")
+                    Domoticz.Log("Toon: connection restored after cooldown.")
                     self.updateThermostatDevices(test)
-                    # Laat de rest van onHeartbeat doorlopen zonder thermostat opnieuw op te halen
+                    # Continue the rest of onHeartbeat without re-fetching thermostat data
                     self._doBoilerAndZwave()
                     self.sceneCounter += self.heartbeat_interval
                     if self.sceneCounter >= self.scene_interval:
@@ -402,9 +402,9 @@ class BasePlugin:
 
         self._doBoilerAndZwave(results)
 
-        # Eenmalige melding pas als ALLE fetches succesvol waren
+        # Single notification only when ALL fetches succeeded
         if all(results) and self.expectedDowntimeLogged:
-            Domoticz.Log("Toon: verbinding hersteld na verwachte herstart.")
+            Domoticz.Log("Toon: connection restored after expected reboot.")
             self.expectedDowntimeLogged = False
 
         self.sceneCounter += self.heartbeat_interval
@@ -413,7 +413,7 @@ class BasePlugin:
             self.sceneCounter = 0
 
     def _doBoilerAndZwave(self, results=None):
-        """Haal boiler- en Z-wave data op en verwerk ze. Optioneel resultatenlijst bijhouden."""
+        """Fetch boiler and Z-Wave data and process it. Optionally track results list."""
         boiler_data = self.fetchJson("/boilerstatus/boilervalues.txt")
         if results is not None:
             results.append(boiler_data is not None)
@@ -427,7 +427,7 @@ class BasePlugin:
             if zw:
                 self.updateZwaveDevices(zw)
 
-    # --- Fetch functies ---
+    # --- Fetch functions ---
     def fetchJson(self, path):
         try:
             url = f"http://{Parameters['Address']}:{Parameters['Port']}{path}"
@@ -437,14 +437,14 @@ class BasePlugin:
         except Exception as e:
             if self.isExpectedDowntime():
                 if not self.expectedDowntimeLogged:
-                    Domoticz.Debug(f"Toon: verwachte downtime, fetch overgeslagen ({path})")
+                    Domoticz.Debug(f"Toon: expected downtime, fetch skipped ({path})")
                     self.expectedDowntimeLogged = True
                 return None
             else:
                 self.startCooldown()
                 return None
 
-    # --- Scenes ophalen ---
+    # --- Fetch scenes ---
     def fetchScenes(self, thermostat_data=None):
         old_scene_map = self.scene_map.copy()
 
@@ -466,7 +466,7 @@ class BasePlugin:
             else:
                 Domoticz.Debug("Toon scene settings retrieved, no changes")
 
-        # Gebruik meegegeven thermostat_data indien beschikbaar, anders nieuwe call
+        # Use provided thermostat_data if available, otherwise fetch fresh
         if thermostat_data is None:
             thermostat_data = self.fetchJson("/happ_thermstat?action=getThermostatInfo")
 
@@ -496,7 +496,7 @@ class BasePlugin:
         elif matched_scene_id is None and current_scene_val != 50:
             UpdateDevice(scene, 0, "50")
 
-    # --- Devices bijwerken ---
+    # --- Update devices ---
     def updateThermostatDevices(self, Response):
         if 'currentTemp' in Response:
             UpdateDevice(curTemp, 0, "%.1f" % (float(Response['currentTemp']) / 100))
@@ -504,7 +504,7 @@ class BasePlugin:
             setpoint = float(Response['currentSetpoint']) / 100
             UpdateDevice(setTemp, 0, "%.1f" % setpoint)
 
-            # Gebruik activeState uit dezelfde response â€” geen aparte getActiveState-call
+            # Use activeState from the same response — no separate getActiveState call
             if 'activeState' in Response:
                 toon_scene = self.idToScene(int(Response['activeState']))
                 current_scene_val = SafeInt(Devices[scene].sValue) if scene in Devices else None
@@ -539,7 +539,7 @@ class BasePlugin:
                 strInfo = f"Next program {strNextProgram} ({strNextSetpoint} C) at {strNextTime}"
             if programInfo in Devices and Devices[programInfo].sValue != strInfo:
                 UpdateDevice(Unit=programInfo, nValue=0, sValue=strInfo)
-                Domoticz.Debug(f"ProgramInfo bijgewerkt: {strInfo}")
+                Domoticz.Debug(f"ProgramInfo updated: {strInfo}")
 
     def updateBoilerDevices(self, data):
         try:
@@ -559,9 +559,9 @@ class BasePlugin:
                 safe_update(boilerModulation, int(data['boilerModulationLevel']))
 
         except Exception as e:
-            Domoticz.Error(f"Fout bij verwerken boiler data: {e}")
+            Domoticz.Error(f"Error processing boiler data: {e}")
 
-    # --- Zwave bijwerken ---
+    # --- Update Z-Wave devices ---
     def updateZwaveDevices(self, Response):
         def safe_float(value, fallback=0.0):
             try:
