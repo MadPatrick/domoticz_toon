@@ -279,8 +279,6 @@ class BasePlugin:
             "Toon_inv": "imageInvID"
         }
 
-        loaded_icons = []
-
         for pack_name, attr_name in icon_packs.items():
             creating_new_icon = pack_name not in Images
             try:
@@ -288,15 +286,10 @@ class BasePlugin:
                     Domoticz.Image(f"{pack_name}.zip").Create()
                 if pack_name in Images:
                     setattr(self, attr_name, Images[pack_name].ID)
-                    status = "created and loaded" if creating_new_icon else f"found in database (ID={getattr(self, attr_name)})"
-                    loaded_icons.append(f"'{pack_name}' {status}")
                 else:
                     Domoticz.Error(f"Unable to load icon pack '{pack_name}.zip'")
             except Exception as e:
                 Domoticz.Error(f"Error loading icon pack '{pack_name}': {e}")
-
-        if loaded_icons:
-            Domoticz.Log(f"Toon: Icons " + ", ".join(loaded_icons))
 
         devices_to_create = [
             {"unit": curTemp, "name": "Temperatuur", "typeName": "Temperature", "image": self.imageID},
