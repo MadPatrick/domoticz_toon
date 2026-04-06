@@ -1,0 +1,4 @@
+# Verwachte dagelijkse reboot window van de Toon
+# Tijden in HH:MM formaat (24-uurs)
+DowntimeStart=03:00
+DowntimeEnd=04:00

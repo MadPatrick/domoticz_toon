@@ -78,6 +78,7 @@
 import Domoticz
 import requests
 import json
+import os
 from datetime import datetime
 from time import time
 
@@ -122,6 +123,36 @@ class BasePlugin:
         self.expectedDowntimeStart = "03:00"
         self.expectedDowntimeEnd   = "04:00"
         self.expectedDowntimeLogged = False
+
+    # --- Config laden ---
+    def loadConfig(self):
+        config_path = os.path.join(Parameters["HomeFolder"], "config.txt")
+        if not os.path.isfile(config_path):
+            Domoticz.Log(f"config.txt niet gevonden ({config_path}), standaardwaarden gebruikt.")
+            return
+        try:
+            with open(config_path, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line or line.startswith("#"):
+                        continue
+                    if "=" in line:
+                        key, _, value = line.partition("=")
+                        key = key.strip()
+                        value = value.strip()
+                        if key == "DowntimeStart":
+                            if len(value) == 5 and value[2] == ":" and value[:2].isdigit() and value[3:].isdigit():
+                                self.expectedDowntimeStart = value
+                            else:
+                                Domoticz.Log(f"Ongeldig formaat voor DowntimeStart: '{value}', standaardwaarde gebruikt.")
+                        elif key == "DowntimeEnd":
+                            if len(value) == 5 and value[2] == ":" and value[:2].isdigit() and value[3:].isdigit():
+                                self.expectedDowntimeEnd = value
+                            else:
+                                Domoticz.Log(f"Ongeldig formaat voor DowntimeEnd: '{value}', standaardwaarde gebruikt.")
+            Domoticz.Log(f"Verwachte downtime window: {self.expectedDowntimeStart} - {self.expectedDowntimeEnd}")
+        except Exception as e:
+            Domoticz.Log(f"Fout bij lezen config.txt: {e}")
 
     # --- Device helper ---
     def createDeviceIfNotExists(self, unit, name, typeName=None, type_=None,
@@ -228,6 +259,8 @@ class BasePlugin:
 
         self.heartbeat_interval = int(Parameters['Mode2'])
         self.scene_interval = int(Parameters['Mode1'])
+
+        self.loadConfig()
 
         if Parameters["Mode3"] == "Yes":
             self.useZwave = True
