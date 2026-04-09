@@ -438,7 +438,8 @@ class BasePlugin:
                     self.expectedDowntimeLogged = True
                 return None
             else:
-                self.startCooldown()
+                if self.errorCooldown == 0:
+                    self.startCooldown()
                 return None
 
     # --- Scenes ophalen ---
@@ -528,7 +529,8 @@ class BasePlugin:
             else:
                 dt = datetime.fromtimestamp(int(Response["nextTime"]))
                 strNextTime = dt.strftime("%d-%m-%Y %H:%M:%S")
-                strNextProgram = strPrograms[int(Response["nextState"])]
+                next_state = int(Response["nextState"])
+                strNextProgram = strPrograms[next_state] if 0 <= next_state < len(strPrograms) else str(next_state)
                 strNextSetpoint = "%.1f" % (float(Response["nextSetpoint"]) / 100)
                 strInfo = f"Next program {strNextProgram} ({strNextSetpoint} C) at {strNextTime}"
             if programInfo in Devices and Devices[programInfo].sValue != strInfo:
@@ -636,7 +638,7 @@ def cleanError(e):
     if "refused" in msg: return "Connection refused"
     if "timeout" in msg: return "Timeout"
     if "max retries" in msg: return "Max retries reached"
-    if "not found" in msg: return "Now found"
+    if "not found" in msg: return "Not found"
     return msg.split('(')[0].strip()
 
 def SafeInt(value):
