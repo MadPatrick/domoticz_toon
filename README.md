@@ -37,7 +37,7 @@ The plugin provides **bidirectional synchronization** and comprehensive monitori
 * **Scene Synchronization**: Automatic synchronization between the setpoint and Toon Scenes:
     * **Away / Sleep / Home / Comfort / Manual**
 * **Program Status**: Shows the current program mode:
-    * **Off / On / Temporary**
+    * **Off / On / Temporary / Vacation**
 * **Program Info**: Detailed information on the next scheduled program (time, setpoint, and state).
 
 ### Boiler & Heating System
