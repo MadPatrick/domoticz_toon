@@ -1,8 +1,8 @@
 """
-<plugin key="RootedToonPlug" name="Toon Rooted" author="MadPatrick" version="2.7.2" externallink="https://github.com/MadPatrick/domoticz_toon">
+<plugin key="RootedToonPlug" name="Toon Rooted" author="MadPatrick" version="2.7.3" externallink="https://github.com/MadPatrick/domoticz_toon">
       <description>
           <br/><h2>Domoticz Plugin for Toon (Rooted)</h2>
-          <br/>Version: 2.7.2
+          <br/>Version: 2.7.3
           <br/><br/>
           This plugin allows Domoticz to communicate with a Rooted Toon thermostat. Its main functionalities are:
           <ul>
@@ -83,7 +83,7 @@ from datetime import datetime
 from time import time
 
 # --- Constants ---
-programStates = ['10','20','30']
+programStates = ['10','20','30','40']  # index 3 = vacation mode = "Vakantie"
 burnerInfos = ['10','20','30']
 strPrograms = ['Weg', 'Slapen', 'Thuis', 'Comfort','Manual']
 
@@ -294,7 +294,7 @@ class BasePlugin:
         devices_to_create = [
             {"unit": curTemp, "name": "Temperatuur", "typeName": "Temperature", "image": self.imageID},
             {"unit": setTemp, "name": "Setpunt Temperatuur", "type": 242, "subtype": 1, "image": self.imageID},
-            {"unit": autoProgram, "name": "Auto Program", "typeName": "Selector Switch", "options": {"LevelActions": "||", "LevelNames": "|Uit|Aan|Tijdelijk", "LevelOffHidden": "true", "SelectorStyle": "0"}, "image": self.imageInvID},
+            {"unit": autoProgram, "name": "Auto Program", "typeName": "Selector Switch", "options": {"LevelActions": "|||", "LevelNames": "|Uit|Aan|Tijdelijk|Vakantie", "LevelOffHidden": "true", "SelectorStyle": "0"}, "image": self.imageInvID},
             {"unit": scene, "name": "Scene", "typeName": "Selector Switch", "options": {"LevelActions": "||||", "LevelNames": "|Weg|Slapen|Thuis|Comfort|Manual", "LevelOffHidden": "true", "SelectorStyle": "0"}, "image": self.imageInvID},
             {"unit": boilerPressure, "name": "Keteldruk", "typeName": "Pressure", "image": self.imageID},
             {"unit": boilerState, "name": "Ketelmode", "typeName": "Selector Switch", "options": {"LevelActions": "||", "LevelNames": "|Uit|CV|WW", "LevelOffHidden": "true", "SelectorStyle": "0"}, "image": self.imageInvID},
