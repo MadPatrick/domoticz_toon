@@ -347,6 +347,14 @@ class BasePlugin:
             current_scene_val = SafeInt(Devices[scene].sValue) if scene in Devices else None
             if current_scene_val != scene_level:
                 UpdateDevice(scene, 0, str(scene_level))
+        elif Unit == autoProgram:
+            prog_level = int(Level)
+            # Map selector level (10=Uit, 20=Aan, 30=Tijdelijk, 40=Vakantie) to Toon state (0,1,2,3)
+            prog_state_map = {10: 0, 20: 1, 30: 2, 40: 3}
+            prog_state = prog_state_map.get(prog_level, None)
+            if prog_state is not None:
+                self.fetchJson(f"/happ_thermstat?action=changeSchemeState&state={prog_state}")
+                UpdateDevice(autoProgram, 0, str(prog_level))
 
     def startCooldown(self, seconds=300):
         self.errorCooldown = seconds
@@ -652,7 +660,7 @@ def UpdateDevice(Unit, nValue, sValue, TimedOut=0):
                     readable_old = scene_labels.get(str(old_s), str(old_s))
 
                 if Unit == autoProgram:
-                    prog_labels = {"10": "Uit", "20": "Aan", "30": "Tijdelijk"}
+                    prog_labels = {"10": "Uit", "20": "Aan", "30": "Tijdelijk", "40": "Vakantie"}
                     readable_new = prog_labels.get(str(sValue), str(sValue))
                     readable_old = prog_labels.get(str(old_s), str(old_s))
 
