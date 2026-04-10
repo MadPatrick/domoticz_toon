@@ -439,6 +439,7 @@ class BasePlugin:
                 return None
             else:
                 if self.errorCooldown == 0:
+                    Domoticz.Error(f"Fetch failed ({path}): {cleanError(e)}")
                     self.startCooldown()
                 return None
 
