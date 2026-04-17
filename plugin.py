@@ -446,7 +446,7 @@ class BasePlugin:
                         Domoticz.Error(f"Fetch failed ({path}): {errorText}")
                         self.startCooldown()
                 else:
-                    key = (path, errorText)
+                    key = path
                     now = time()
                     last = self.optionalErrorLastLog.get(key, 0)
                     if now - last >= OPTIONAL_ERROR_LOG_INTERVAL:
