@@ -115,6 +115,7 @@ class BasePlugin:
         self.sceneCounter = 0
         self.errorCooldown = 0
         self.lastErrorTime = None
+        self.optionalErrorLastLog = {}
         self.imageID = 0
         self.imageInvID = 0
         self.heartbeat_interval = 60
@@ -196,7 +197,7 @@ class BasePlugin:
         if not paramList:
             detected_version = "niet gedetecteerd"
             try:
-                zwave_json = self.fetchJson("/hdrv_zwave?action=getDevices.json")
+                zwave_json = self.fetchJson("/hdrv_zwave?action=getDevices.json", critical=False)
                 if zwave_json:
                     internal_addresses = [
                         dev["internalAddress"] for dev in zwave_json.values()
@@ -418,14 +419,14 @@ class BasePlugin:
             self.updateBoilerDevices(boiler_data)
 
         if self.useZwave:
-            zw = self.fetchJson("/hdrv_zwave?action=getDevices.json")
+            zw = self.fetchJson("/hdrv_zwave?action=getDevices.json", critical=False)
             if results is not None:
                 results.append(zw is not None)
             if zw:
                 self.updateZwaveDevices(zw)
 
     # --- Fetch functies ---
-    def fetchJson(self, path):
+    def fetchJson(self, path, critical=True):
         try:
             url = f"http://{Parameters['Address']}:{Parameters['Port']}{path}"
             r = requests.get(url, timeout=10)
@@ -438,9 +439,20 @@ class BasePlugin:
                     self.expectedDowntimeLogged = True
                 return None
             else:
-                if self.errorCooldown == 0:
-                    Domoticz.Error(f"Fetch failed ({path}): {cleanError(e)}")
-                    self.startCooldown()
+                errorText = cleanError(e)
+                if critical:
+                    if self.errorCooldown == 0:
+                        Domoticz.Error(f"Fetch failed ({path}): {errorText}")
+                        self.startCooldown()
+                else:
+                    key = f"{path}|{errorText}"
+                    now = time()
+                    last = self.optionalErrorLastLog.get(key, 0)
+                    if now - last >= 1800:
+                        Domoticz.Log(f"Optional fetch failed ({path}): {errorText}. Continuing without this data.")
+                        self.optionalErrorLastLog[key] = now
+                    else:
+                        Domoticz.Debug(f"Optional fetch still failing ({path}): {errorText}")
                 return None
 
     # --- Scenes ophalen ---
