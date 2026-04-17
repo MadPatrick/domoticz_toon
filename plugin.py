@@ -86,7 +86,7 @@ from time import time
 programStates = ['10','20','30','40']  # index 3 = vacation mode = "Vakantie"
 burnerInfos = ['10','20','30']
 strPrograms = ['Weg', 'Slapen', 'Thuis', 'Comfort','Manual']
-OPTIONAL_ERROR_LOG_INTERVAL = 1800
+OPTIONAL_ERROR_LOG_INTERVAL = 1800  # Log optional errors at most once every 30 minutes
 
 # Device unit numbers
 curTemp = 1
@@ -446,7 +446,7 @@ class BasePlugin:
                         Domoticz.Error(f"Fetch failed ({path}): {errorText}")
                         self.startCooldown()
                 else:
-                    key = f"{path}|{errorText}"
+                    key = (path, errorText)
                     now = time()
                     last = self.optionalErrorLastLog.get(key, 0)
                     if now - last >= OPTIONAL_ERROR_LOG_INTERVAL:
