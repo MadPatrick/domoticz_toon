@@ -86,6 +86,7 @@ from time import time
 programStates = ['10','20','30','40']  # index 3 = vacation mode = "Vakantie"
 burnerInfos = ['10','20','30']
 strPrograms = ['Weg', 'Slapen', 'Thuis', 'Comfort','Manual']
+OPTIONAL_ERROR_LOG_INTERVAL = 1800
 
 # Device unit numbers
 curTemp = 1
@@ -448,7 +449,7 @@ class BasePlugin:
                     key = f"{path}|{errorText}"
                     now = time()
                     last = self.optionalErrorLastLog.get(key, 0)
-                    if now - last >= 1800:
+                    if now - last >= OPTIONAL_ERROR_LOG_INTERVAL:
                         Domoticz.Log(f"Optional fetch failed ({path}): {errorText}. Continuing without this data.")
                         self.optionalErrorLastLog[key] = now
                     else:
