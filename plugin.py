@@ -545,13 +545,10 @@ class BasePlugin:
             thermostat_data = self.fetchJson("/happ_thermstat?action=getThermostatInfo")
 
         if thermostat_data and 'activeState' in thermostat_data:
-            # Skip scene update when summer mode is active; pinning is handled by updateThermostatDevices
-            summer_active = self.useSummerMode and summerMode in Devices and SafeInt(Devices[summerMode].sValue) == 20
-            if not summer_active:
-                toon_scene = self.idToScene(int(thermostat_data['activeState']))
-                current_scene_val = SafeInt(Devices[scene].sValue) if scene in Devices else None
-                if current_scene_val != toon_scene:
-                    UpdateDevice(scene, 0, str(toon_scene))
+            toon_scene = self.idToScene(int(thermostat_data['activeState']))
+            current_scene_val = SafeInt(Devices[scene].sValue) if scene in Devices else None
+            if current_scene_val != toon_scene:
+                UpdateDevice(scene, 0, str(toon_scene))
 
     def idToScene(self, id_):
         mapping = {0: 40, 1: 30, 2: 20, 3: 10}
@@ -580,15 +577,16 @@ class BasePlugin:
             setpoint = float(Response['currentSetpoint']) / 100
             UpdateDevice(setTemp, 0, "%.1f" % setpoint)
 
-            # When summer mode is active, scene is managed manually by the user; skip automatic scene update.
-            if not (self.useSummerMode and summerMode in Devices and SafeInt(Devices[summerMode].sValue) == 20):
-                if 'activeState' in Response:
-                    toon_scene = self.idToScene(int(Response['activeState']))
-                    current_scene_val = SafeInt(Devices[scene].sValue) if scene in Devices else None
-                    if current_scene_val != toon_scene:
-                        UpdateDevice(scene, 0, str(toon_scene))
-                else:
-                    self.updateSceneFromSetpoint(setpoint)
+            # Sync scene from Toon's activeState when available.
+            # In Summer Mode skip temperature-based scene matching (all scene temps are equal),
+            # but still follow activeState so Domoticz stays in sync with the Toon display.
+            if 'activeState' in Response:
+                toon_scene = self.idToScene(int(Response['activeState']))
+                current_scene_val = SafeInt(Devices[scene].sValue) if scene in Devices else None
+                if current_scene_val != toon_scene:
+                    UpdateDevice(scene, 0, str(toon_scene))
+            elif not (self.useSummerMode and summerMode in Devices and SafeInt(Devices[summerMode].sValue) == 20):
+                self.updateSceneFromSetpoint(setpoint)
             self.updateProgramInfo(Response)
         if 'programState' in Response:
             prog_idx = int(Response['programState'])
