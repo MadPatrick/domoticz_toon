@@ -11,7 +11,7 @@
               <li>Set refresh intervals for Scenes and real-time data independently.</li>
               <li>Read P1 smart meter data, with configurable device addresses for selective monitoring.</li>
               <li>Support for different Toon versions: v1, v2, or user-defined.</li>
-              <li>Summer mode status from Toon user settings.</li>
+              <li>Summer mode status from Toon user settings (optional, enable via <code>SummerMode=yes</code> in config.txt).</li>
           </ul>
           <br/>
           The plugin creates the following Domoticz devices:
@@ -126,6 +126,7 @@ class BasePlugin:
         self.expectedDowntimeStart = "03:00"
         self.expectedDowntimeEnd   = "04:00"
         self.expectedDowntimeLogged = False
+        self.useSummerMode = False
 
     # --- Config laden ---
     def loadConfig(self):
@@ -153,7 +154,15 @@ class BasePlugin:
                                 self.expectedDowntimeEnd = value
                             else:
                                 Domoticz.Log(f"Invalid format for DowntimeEnd: '{value}', default values used.")
+                        elif key == "SummerMode":
+                            if value.lower() == "yes":
+                                self.useSummerMode = True
+                            elif value.lower() == "no":
+                                self.useSummerMode = False
+                            else:
+                                Domoticz.Log(f"Invalid value for SummerMode: '{value}', expected 'yes' or 'no'. Default 'no' used.")
             Domoticz.Log(f"Expected downtime window: {self.expectedDowntimeStart} - {self.expectedDowntimeEnd}")
+            Domoticz.Log(f"Summer mode: {'enabled' if self.useSummerMode else 'disabled'}")
         except Exception as e:
             Domoticz.Log(f"Error reading config.txt: {e}")
 
@@ -304,8 +313,10 @@ class BasePlugin:
             {"unit": boilerModulation, "name": "Ketel modulatie", "type": 243, "subtype": 6, "image": self.imageID},
             {"unit": boilerSetPoint, "name": "Ketel setpoint", "type": 80, "subtype": 5, "used": 0, "image": self.imageID},
             {"unit": programInfo, "name": "ProgramInfo", "typeName": "Text", "image": self.imageID},
-            {"unit": summerMode, "name": "Zomermodus", "typeName": "Switch", "image": self.imageInvID}
         ]
+
+        if self.useSummerMode:
+            devices_to_create.append({"unit": summerMode, "name": "Zomermodus", "typeName": "Switch", "image": self.imageInvID})
 
         for dev in devices_to_create:
             self.createDeviceIfNotExists(
@@ -389,7 +400,8 @@ class BasePlugin:
                     Domoticz.Log("Connection restored after cooldown.")
                     self.updateThermostatDevices(test)
                     self._doBoilerAndZwave()
-                    self.readSummerMode()
+                    if self.useSummerMode:
+                        self.readSummerMode()
                     self.sceneCounter += self.heartbeat_interval
                     if self.sceneCounter >= self.scene_interval:
                         self.fetchScenes(thermostat_data=test)
@@ -404,7 +416,8 @@ class BasePlugin:
             self.updateThermostatDevices(thermostat_data)
 
         self._doBoilerAndZwave(results)
-        self.readSummerMode()
+        if self.useSummerMode:
+            self.readSummerMode()
 
         if all(results) and self.expectedDowntimeLogged:
             Domoticz.Log("Connection restored after expected restart.")
