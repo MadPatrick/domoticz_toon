@@ -601,15 +601,13 @@ class BasePlugin:
         if 'summerMode' not in data:
             Domoticz.Debug("readSummerMode: 'summerMode' key not found in tscSettings.userSettings.json")
             return
-        raw = data['summerMode']
-        if isinstance(raw, str):
-            nval = 1 if raw.lower() in ('true', '1', 'yes', 'on') else 0
-        else:
-            nval = 1 if raw else 0
-        Domoticz.Log(f"readSummerMode: summerMode = {raw!r} → {'Aan' if nval else 'Uit'}")
+        nval = 1 if data['summerMode'] else 0
+        Domoticz.Debug(f"Zomermodus: {'Aan' if nval else 'Uit'}")
         if summerMode in Devices:
             if Devices[summerMode].nValue != nval:
+                Domoticz.Log(f"Zomermodus gewijzigd: {'Aan' if nval else 'Uit'}")
                 UpdateDevice(summerMode, nval, "On" if nval else "Off")
+                self.fetchScenes()
                 if nval == 1:
                     # Summer mode just turned on: pin scene to Manual to prevent oscillation
                     current_scene_val = SafeInt(Devices[scene].sValue) if scene in Devices else None
