@@ -6,7 +6,3 @@ DowntimeEnd=04:00
 # Summer mode device: set to 'yes' to create a Summer Mode switch and poll summermode.json
 # Set to 'no' to disable summer mode entirely (default)
 SummerMode=no
-
-# Scene to pin when Summer mode is active (use the device level code, default is 50 = Manual)
-# Valid codes: 10=Weg, 20=Slapen, 30=Thuis, 40=Comfort, 50=Manual
-SummerModeScene=50
