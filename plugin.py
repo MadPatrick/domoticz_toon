@@ -241,7 +241,7 @@ class BasePlugin:
 
             except Exception as e:
                 detected_version = "error"
-                Domoticz.Log(f"Error with automatic detection of Zwave versie: {e}")
+                Domoticz.Log(f"Error with automatic detection of Z-Wave version: {e}")
 
         Domoticz.Log(
             f"P1-devices {detected_version} : Gas={self.ia_gas}, DeliveredNT={self.ia_ednt}, "
@@ -572,7 +572,7 @@ class BasePlugin:
                 strInfo = f"Next program {strNextProgram} ({strNextSetpoint} C) at {strNextTime}"
             if programInfo in Devices and Devices[programInfo].sValue != strInfo:
                 UpdateDevice(Unit=programInfo, nValue=0, sValue=strInfo)
-                Domoticz.Debug(f"ProgramInfo bijgewerkt: {strInfo}")
+                Domoticz.Debug(f"ProgramInfo updated: {strInfo}")
 
     def updateBoilerDevices(self, data):
         try:
@@ -592,7 +592,7 @@ class BasePlugin:
                 safe_update(boilerModulation, int(data['boilerModulationLevel']))
 
         except Exception as e:
-            Domoticz.Error(f"Fout bij verwerken boiler data: {e}")
+            Domoticz.Error(f"Error processing boiler data: {e}")
 
     def readSummerMode(self):
         data = self.fetchJson("/tsc/tscSettings.userSettings.json", critical=False)
@@ -602,10 +602,10 @@ class BasePlugin:
             Domoticz.Debug("readSummerMode: 'summerMode' key not found in tscSettings.userSettings.json")
             return
         nval = 1 if data['summerMode'] else 0
-        Domoticz.Debug(f"Zomermodus: {'Aan' if nval else 'Uit'}")
+        Domoticz.Debug(f"Summer mode: {'On' if nval else 'Off'}")
         if summerMode in Devices:
             if Devices[summerMode].nValue != nval:
-                Domoticz.Log(f"Zomermodus gewijzigd: {'Aan' if nval else 'Uit'}")
+                Domoticz.Log(f"Summer mode changed: {'On' if nval else 'Off'}")
                 UpdateDevice(summerMode, nval, "On" if nval else "Off")
                 self.fetchScenes()
                 if nval == 1:
