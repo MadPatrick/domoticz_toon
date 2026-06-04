@@ -513,10 +513,13 @@ class BasePlugin:
             thermostat_data = self.fetchJson("/happ_thermstat?action=getThermostatInfo")
 
         if thermostat_data and 'activeState' in thermostat_data:
-            toon_scene = self.idToScene(int(thermostat_data['activeState']))
-            current_scene_val = SafeInt(Devices[scene].sValue) if scene in Devices else None
-            if current_scene_val != toon_scene:
-                UpdateDevice(scene, 0, str(toon_scene))
+            # Skip scene update when summer mode is active; pinning is handled by updateThermostatDevices
+            summer_active = self.useSummerMode and summerMode in Devices and Devices[summerMode].nValue == 1
+            if not summer_active:
+                toon_scene = self.idToScene(int(thermostat_data['activeState']))
+                current_scene_val = SafeInt(Devices[scene].sValue) if scene in Devices else None
+                if current_scene_val != toon_scene:
+                    UpdateDevice(scene, 0, str(toon_scene))
 
     def idToScene(self, id_):
         mapping = {0: 40, 1: 30, 2: 20, 3: 10}
