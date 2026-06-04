@@ -531,7 +531,13 @@ class BasePlugin:
             setpoint = float(Response['currentSetpoint']) / 100
             UpdateDevice(setTemp, 0, "%.1f" % setpoint)
 
-            if 'activeState' in Response:
+            # When summer mode is active all scenes share the same setpoint (10°C),
+            # so normal scene matching would oscillate. Always pin the scene to Manual.
+            if self.useSummerMode and summerMode in Devices and Devices[summerMode].nValue == 1:
+                current_scene_val = SafeInt(Devices[scene].sValue) if scene in Devices else None
+                if current_scene_val != 50:
+                    UpdateDevice(scene, 0, "50")
+            elif 'activeState' in Response:
                 toon_scene = self.idToScene(int(Response['activeState']))
                 current_scene_val = SafeInt(Devices[scene].sValue) if scene in Devices else None
                 if current_scene_val != toon_scene:
@@ -599,6 +605,11 @@ class BasePlugin:
         if summerMode in Devices:
             if Devices[summerMode].nValue != nval:
                 UpdateDevice(summerMode, nval, "On" if nval else "Off")
+                if nval == 1:
+                    # Summer mode just turned on: pin scene to Manual to prevent oscillation
+                    current_scene_val = SafeInt(Devices[scene].sValue) if scene in Devices else None
+                    if current_scene_val != 50:
+                        UpdateDevice(scene, 0, "50")
 
     def updateZwaveDevices(self, Response):
         def safe_float(value, fallback=0.0):
