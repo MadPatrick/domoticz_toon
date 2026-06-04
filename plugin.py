@@ -519,8 +519,8 @@ class BasePlugin:
                 current_scene_val = SafeInt(Devices[scene].sValue) if scene in Devices else None
                 if current_scene_val != toon_scene:
                     UpdateDevice(scene, 0, str(toon_scene))
-
-            self.updateSceneFromSetpoint(setpoint)
+            else:
+                self.updateSceneFromSetpoint(setpoint)
             self.updateProgramInfo(Response)
         if 'programState' in Response:
             prog_idx = int(Response['programState'])
