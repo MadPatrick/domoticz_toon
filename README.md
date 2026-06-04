@@ -20,7 +20,11 @@ Follow these steps to install the plugin in your Domoticz environment.
     ```bash
     git clone https://github.com/MadPatrick/domoticz_toon toon
     ```
-3.  **Restart** Domoticz to load the plugin:
+3.  **Create a symlink** on the Toon via SSH so the plugin can read the settings file:
+    ```bash
+    ln -s /mnt/data/tsc/tscSettings.userSettings.json /qmf/www/tsc/tscSettings.userSettings.json
+    ```
+4.  **Restart** Domoticz to load the plugin:
     ```bash
     sudo systemctl restart domoticz
     ```

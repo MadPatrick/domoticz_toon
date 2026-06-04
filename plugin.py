@@ -1,8 +1,8 @@
 """
-<plugin key="RootedToonPlug" name="Toon Rooted" author="MadPatrick" version="2.7.5" externallink="https://github.com/MadPatrick/domoticz_toon">
+<plugin key="RootedToonPlug" name="Toon Rooted" author="MadPatrick" version="2.8.0" externallink="https://github.com/MadPatrick/domoticz_toon">
       <description>
           <br/><h2>Domoticz Plugin for Toon (Rooted)</h2>
-          <br/>Version: 2.7.5
+          <br/>Version: 2.8.0
           <br/><br/>
           This plugin allows Domoticz to communicate with a Rooted Toon thermostat. Its main functionalities are:
           <ul>
@@ -595,11 +595,11 @@ class BasePlugin:
             Domoticz.Error(f"Fout bij verwerken boiler data: {e}")
 
     def readSummerMode(self):
-        data = self.fetchJson("/summermode.json", critical=False)
+        data = self.fetchJson("/tsc/tscSettings.userSettings.json", critical=False)
         if data is None:
             return
         if 'summerMode' not in data:
-            Domoticz.Debug("readSummerMode: 'summerMode' key not found in summermode.json")
+            Domoticz.Debug("readSummerMode: 'summerMode' key not found in tscSettings.userSettings.json")
             return
         nval = 1 if data['summerMode'] else 0
         if summerMode in Devices:
