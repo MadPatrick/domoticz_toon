@@ -580,6 +580,7 @@ class BasePlugin:
         if data is None:
             return
         if 'summerMode' not in data:
+            Domoticz.Debug("readSummerMode: 'summerMode' key not found in tscSettings.userSettings.json")
             return
         nval = 1 if data['summerMode'] else 0
         if summerMode in Devices:
