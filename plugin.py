@@ -404,8 +404,8 @@ class BasePlugin:
         elif Unit == summerMode:
             level = int(Level)
             enabled = level == 20
-            self.useSummerMode = enabled
-            self.updateConfigValue("SummerMode", "yes" if enabled else "no")
+            if self.updateConfigValue("SummerMode", "yes" if enabled else "no"):
+                self.useSummerMode = enabled
             UpdateDevice(summerMode, 0, str(level))
 
     def updateConfigValue(self, key, value):
@@ -428,10 +428,13 @@ class BasePlugin:
                 with open(config_path, "w", encoding="utf-8") as f:
                     f.writelines(new_lines)
                 Domoticz.Log(f"config.txt updated: {key}={value}")
+                return True
             else:
                 Domoticz.Log(f"config.txt not found, could not update {key}")
+                return False
         except Exception as e:
             Domoticz.Log(f"Error updating config.txt ({key}={value}): {e}")
+            return False
 
     def startCooldown(self, seconds=300):
         self.errorCooldown = seconds
