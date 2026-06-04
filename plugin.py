@@ -576,11 +576,11 @@ class BasePlugin:
             Domoticz.Error(f"Fout bij verwerken boiler data: {e}")
 
     def readSummerMode(self):
-        data = self.fetchJson("/mnt/data/tsc/tscSettings.userSettings.json", critical=False)
+        data = self.fetchJson("/summermode.json", critical=False)
         if data is None:
             return
         if 'summerMode' not in data:
-            Domoticz.Debug("readSummerMode: 'summerMode' key not found in tscSettings.userSettings.json")
+            Domoticz.Debug("readSummerMode: 'summerMode' key not found in summermode.json")
             return
         nval = 1 if data['summerMode'] else 0
         if summerMode in Devices:
