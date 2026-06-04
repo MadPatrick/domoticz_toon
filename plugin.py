@@ -316,7 +316,7 @@ class BasePlugin:
         ]
 
         if self.useSummerMode:
-            devices_to_create.append({"unit": summerMode, "name": "Zomermodus", "typeName": "Switch", "image": self.imageInvID})
+            devices_to_create.append({"unit": summerMode, "name": "Zomermodus", "typeName": "Switch", "image": self.imageID})
 
         for dev in devices_to_create:
             self.createDeviceIfNotExists(
