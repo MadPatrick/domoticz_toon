@@ -2,3 +2,7 @@
 # Times in HH:MM format (24-hour)
 DowntimeStart=03:00
 DowntimeEnd=04:00
+
+# Summer mode device: set to 'yes' to create a Summer Mode switch and poll summermode.json
+# Set to 'no' to disable summer mode entirely (default)
+SummerMode=no

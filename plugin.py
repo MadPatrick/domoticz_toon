@@ -1,8 +1,8 @@
 """
-<plugin key="RootedToonPlug" name="Toon Rooted" author="MadPatrick" version="2.7.4" externallink="https://github.com/MadPatrick/domoticz_toon">
+<plugin key="RootedToonPlug" name="Toon Rooted" author="MadPatrick" version="2.8.0" externallink="https://github.com/MadPatrick/domoticz_toon">
       <description>
           <br/><h2>Domoticz Plugin for Toon (Rooted)</h2>
-          <br/>Version: 2.7.4
+          <br/>Version: 2.8.0
           <br/><br/>
           This plugin allows Domoticz to communicate with a Rooted Toon thermostat. Its main functionalities are:
           <ul>
@@ -11,7 +11,7 @@
               <li>Set refresh intervals for Scenes and real-time data independently.</li>
               <li>Read P1 smart meter data, with configurable device addresses for selective monitoring.</li>
               <li>Support for different Toon versions: v1, v2, or user-defined.</li>
-              <li>Enable or disable debug logging for troubleshooting purposes.</li>
+              <li>Summer mode status from Toon user settings (optional, enable via <code>SummerMode=yes</code> in config.txt).</li>
           </ul>
           <br/>
           The plugin creates the following Domoticz devices:
@@ -102,6 +102,7 @@ p1electricity = 10
 boilerState = 11
 boilerModulation = 12
 boilerSetPoint = 13
+summerMode = 14
 
 # --- BasePlugin class ---
 class BasePlugin:
@@ -125,6 +126,7 @@ class BasePlugin:
         self.expectedDowntimeStart = "03:00"
         self.expectedDowntimeEnd   = "04:00"
         self.expectedDowntimeLogged = False
+        self.useSummerMode = False
 
     # --- Config laden ---
     def loadConfig(self):
@@ -152,7 +154,15 @@ class BasePlugin:
                                 self.expectedDowntimeEnd = value
                             else:
                                 Domoticz.Log(f"Invalid format for DowntimeEnd: '{value}', default values used.")
+                        elif key == "SummerMode":
+                            if value.lower() == "yes":
+                                self.useSummerMode = True
+                            elif value.lower() == "no":
+                                self.useSummerMode = False
+                            else:
+                                Domoticz.Log(f"Invalid value for SummerMode: '{value}', expected 'yes' or 'no'. Default 'no' used.")
             Domoticz.Log(f"Expected downtime window: {self.expectedDowntimeStart} - {self.expectedDowntimeEnd}")
+            Domoticz.Log(f"Summer mode: {'enabled' if self.useSummerMode else 'disabled'}")
         except Exception as e:
             Domoticz.Log(f"Error reading config.txt: {e}")
 
@@ -231,7 +241,7 @@ class BasePlugin:
 
             except Exception as e:
                 detected_version = "error"
-                Domoticz.Log(f"Error with automatic detection of Zwave versie: {e}")
+                Domoticz.Log(f"Error with automatic detection of Z-Wave version: {e}")
 
         Domoticz.Log(
             f"P1-devices {detected_version} : Gas={self.ia_gas}, DeliveredNT={self.ia_ednt}, "
@@ -302,8 +312,11 @@ class BasePlugin:
             {"unit": boilerState, "name": "Ketelmode", "typeName": "Selector Switch", "options": {"LevelActions": "||", "LevelNames": "|Uit|CV|WW", "LevelOffHidden": "true", "SelectorStyle": "0"}, "image": self.imageInvID},
             {"unit": boilerModulation, "name": "Ketel modulatie", "type": 243, "subtype": 6, "image": self.imageID},
             {"unit": boilerSetPoint, "name": "Ketel setpoint", "type": 80, "subtype": 5, "used": 0, "image": self.imageID},
-            {"unit": programInfo, "name": "ProgramInfo", "typeName": "Text", "image": self.imageID}
+            {"unit": programInfo, "name": "ProgramInfo", "typeName": "Text", "image": self.imageID},
         ]
+
+        if self.useSummerMode:
+            devices_to_create.append({"unit": summerMode, "name": "Zomermodus", "typeName": "Switch", "image": self.imageID})
 
         for dev in devices_to_create:
             self.createDeviceIfNotExists(
@@ -387,6 +400,8 @@ class BasePlugin:
                     Domoticz.Log("Connection restored after cooldown.")
                     self.updateThermostatDevices(test)
                     self._doBoilerAndZwave()
+                    if self.useSummerMode:
+                        self.readSummerMode()
                     self.sceneCounter += self.heartbeat_interval
                     if self.sceneCounter >= self.scene_interval:
                         self.fetchScenes(thermostat_data=test)
@@ -401,6 +416,8 @@ class BasePlugin:
             self.updateThermostatDevices(thermostat_data)
 
         self._doBoilerAndZwave(results)
+        if self.useSummerMode:
+            self.readSummerMode()
 
         if all(results) and self.expectedDowntimeLogged:
             Domoticz.Log("Connection restored after expected restart.")
@@ -514,7 +531,13 @@ class BasePlugin:
             setpoint = float(Response['currentSetpoint']) / 100
             UpdateDevice(setTemp, 0, "%.1f" % setpoint)
 
-            if 'activeState' in Response:
+            # When summer mode is active all scenes share the same setpoint (10°C),
+            # so normal scene matching would oscillate. Always pin the scene to Manual.
+            if self.useSummerMode and summerMode in Devices and Devices[summerMode].nValue == 1:
+                current_scene_val = SafeInt(Devices[scene].sValue) if scene in Devices else None
+                if current_scene_val != 50:
+                    UpdateDevice(scene, 0, "50")
+            elif 'activeState' in Response:
                 toon_scene = self.idToScene(int(Response['activeState']))
                 current_scene_val = SafeInt(Devices[scene].sValue) if scene in Devices else None
                 if current_scene_val != toon_scene:
@@ -549,7 +572,7 @@ class BasePlugin:
                 strInfo = f"Next program {strNextProgram} ({strNextSetpoint} C) at {strNextTime}"
             if programInfo in Devices and Devices[programInfo].sValue != strInfo:
                 UpdateDevice(Unit=programInfo, nValue=0, sValue=strInfo)
-                Domoticz.Debug(f"ProgramInfo bijgewerkt: {strInfo}")
+                Domoticz.Debug(f"ProgramInfo updated: {strInfo}")
 
     def updateBoilerDevices(self, data):
         try:
@@ -569,7 +592,27 @@ class BasePlugin:
                 safe_update(boilerModulation, int(data['boilerModulationLevel']))
 
         except Exception as e:
-            Domoticz.Error(f"Fout bij verwerken boiler data: {e}")
+            Domoticz.Error(f"Error processing boiler data: {e}")
+
+    def readSummerMode(self):
+        data = self.fetchJson("/tsc/tscSettings.userSettings.json", critical=False)
+        if data is None:
+            return
+        if 'summerMode' not in data:
+            Domoticz.Debug("readSummerMode: 'summerMode' key not found in tscSettings.userSettings.json")
+            return
+        nval = 1 if data['summerMode'] else 0
+        Domoticz.Debug(f"Summer mode: {'On' if nval else 'Off'}")
+        if summerMode in Devices:
+            if Devices[summerMode].nValue != nval:
+                Domoticz.Log(f"Summer mode changed: {'On' if nval else 'Off'}")
+                UpdateDevice(summerMode, nval, "On" if nval else "Off")
+                self.fetchScenes()
+                if nval == 1:
+                    # Summer mode just turned on: pin scene to Manual to prevent oscillation
+                    current_scene_val = SafeInt(Devices[scene].sValue) if scene in Devices else None
+                    if current_scene_val != 50:
+                        UpdateDevice(scene, 0, "50")
 
     def updateZwaveDevices(self, Response):
         def safe_float(value, fallback=0.0):

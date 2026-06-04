@@ -20,7 +20,12 @@ Follow these steps to install the plugin in your Domoticz environment.
     ```bash
     git clone https://github.com/MadPatrick/domoticz_toon toon
     ```
-3.  **Restart** Domoticz to load the plugin:
+3.  *(Optional — only needed for Summer Mode)* **Create a symlink** on the Toon via SSH so the plugin can read the settings file:
+    ```bash
+    ln -s /mnt/data/tsc/tscSettings.userSettings.json /qmf/www/tsc/tscSettings.userSettings.json
+    ```
+    > ℹ️ Skip this step if you do not plan to use the Summer Mode feature.
+4.  **Restart** Domoticz to load the plugin:
     ```bash
     sudo systemctl restart domoticz
     ```
@@ -71,6 +76,24 @@ DowntimeEnd=04:00
 ```
 
 If the file is missing, the plugin falls back to the built-in defaults (`03:00`–`04:00`). A log message will indicate which values are in use at startup.
+
+### ☀️ Summer Mode (`SummerMode`)
+
+When Summer Mode is active, all Toon scene setpoints are set to a low value (e.g. 10 °C) because heating is not needed. This prevents Domoticz from interpreting those scenes as normal temperature changes.
+
+Enable Summer Mode by adding the following line to `config.txt`:
+
+```ini
+SummerMode=yes
+```
+
+Set it back to `no` (or remove the line) to disable it:
+
+```ini
+SummerMode=no
+```
+
+> ⚠️ **Prerequisite**: Summer Mode requires the symlink on the Toon described in the [Installation](#-installation) section (step 3). Without it, the plugin cannot read the `tscSettings.userSettings.json` file and Summer Mode will not function.
 
 ---
 
