@@ -1,8 +1,8 @@
 """
-<plugin key="RootedToonPlug" name="Toon Rooted" author="MadPatrick" version="2.7.4" externallink="https://github.com/MadPatrick/domoticz_toon">
+<plugin key="RootedToonPlug" name="Toon Rooted" author="MadPatrick" version="2.7.5" externallink="https://github.com/MadPatrick/domoticz_toon">
       <description>
           <br/><h2>Domoticz Plugin for Toon (Rooted)</h2>
-          <br/>Version: 2.7.4
+          <br/>Version: 2.7.5
           <br/><br/>
           This plugin allows Domoticz to communicate with a Rooted Toon thermostat. Its main functionalities are:
           <ul>
@@ -11,7 +11,7 @@
               <li>Set refresh intervals for Scenes and real-time data independently.</li>
               <li>Read P1 smart meter data, with configurable device addresses for selective monitoring.</li>
               <li>Support for different Toon versions: v1, v2, or user-defined.</li>
-              <li>Enable or disable debug logging for troubleshooting purposes.</li>
+              <li>Summer mode status from Toon user settings.</li>
           </ul>
           <br/>
           The plugin creates the following Domoticz devices:
@@ -102,6 +102,7 @@ p1electricity = 10
 boilerState = 11
 boilerModulation = 12
 boilerSetPoint = 13
+summerMode = 14
 
 # --- BasePlugin class ---
 class BasePlugin:
@@ -302,7 +303,8 @@ class BasePlugin:
             {"unit": boilerState, "name": "Ketelmode", "typeName": "Selector Switch", "options": {"LevelActions": "||", "LevelNames": "|Uit|CV|WW", "LevelOffHidden": "true", "SelectorStyle": "0"}, "image": self.imageInvID},
             {"unit": boilerModulation, "name": "Ketel modulatie", "type": 243, "subtype": 6, "image": self.imageID},
             {"unit": boilerSetPoint, "name": "Ketel setpoint", "type": 80, "subtype": 5, "used": 0, "image": self.imageID},
-            {"unit": programInfo, "name": "ProgramInfo", "typeName": "Text", "image": self.imageID}
+            {"unit": programInfo, "name": "ProgramInfo", "typeName": "Text", "image": self.imageID},
+            {"unit": summerMode, "name": "Zomermodus", "typeName": "Switch", "image": self.imageInvID}
         ]
 
         for dev in devices_to_create:
@@ -387,6 +389,7 @@ class BasePlugin:
                     Domoticz.Log("Connection restored after cooldown.")
                     self.updateThermostatDevices(test)
                     self._doBoilerAndZwave()
+                    self.readSummerMode()
                     self.sceneCounter += self.heartbeat_interval
                     if self.sceneCounter >= self.scene_interval:
                         self.fetchScenes(thermostat_data=test)
@@ -401,6 +404,7 @@ class BasePlugin:
             self.updateThermostatDevices(thermostat_data)
 
         self._doBoilerAndZwave(results)
+        self.readSummerMode()
 
         if all(results) and self.expectedDowntimeLogged:
             Domoticz.Log("Connection restored after expected restart.")
@@ -570,6 +574,17 @@ class BasePlugin:
 
         except Exception as e:
             Domoticz.Error(f"Fout bij verwerken boiler data: {e}")
+
+    def readSummerMode(self):
+        data = self.fetchJson("/mnt/data/tsc/tscSettings.userSettings.json", critical=False)
+        if data is None:
+            return
+        if 'summerMode' not in data:
+            return
+        nval = 1 if data['summerMode'] else 0
+        if summerMode in Devices:
+            if Devices[summerMode].nValue != nval:
+                UpdateDevice(summerMode, nval, "On" if nval else "Off")
 
     def updateZwaveDevices(self, Response):
         def safe_float(value, fallback=0.0):
