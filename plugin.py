@@ -11,7 +11,7 @@
               <li>Set refresh intervals for Scenes and real-time data independently.</li>
               <li>Read P1 smart meter data, with configurable device addresses for selective monitoring.</li>
               <li>Support for different Toon versions: v1, v2, or user-defined.</li>
-              <li>Summer mode status from Toon user settings (optional, enable via <code>SummerMode=yes</code> in config.txt).</li>
+              <li>Summer mode selector: enable/disable via the "Zomermodus" device in Domoticz; state is persisted in config.txt and reflects Toon's actual summer mode.</li>
           </ul>
           <br/>
           The plugin creates the following Domoticz devices:
@@ -127,6 +127,7 @@ class BasePlugin:
         self.expectedDowntimeEnd   = "04:00"
         self.expectedDowntimeLogged = False
         self.useSummerMode = False
+        self.summerModeScene = 50
 
     # --- Config laden ---
     def loadConfig(self):
@@ -161,8 +162,21 @@ class BasePlugin:
                                 self.useSummerMode = False
                             else:
                                 Domoticz.Log(f"Invalid value for SummerMode: '{value}', expected 'yes' or 'no'. Default 'no' used.")
+                        elif key == "SummerModeScene":
+                            valid_codes = {10, 20, 30, 40, 50}
+                            try:
+                                code = int(value)
+                                if code in valid_codes:
+                                    self.summerModeScene = code
+                                else:
+                                    Domoticz.Log(f"Invalid value for SummerModeScene: '{value}', expected one of {sorted(valid_codes)}. Default 50 used.")
+                            except ValueError:
+                                Domoticz.Log(f"Invalid value for SummerModeScene: '{value}', expected a numeric code. Default 50 used.")
             Domoticz.Log(f"Expected downtime window: {self.expectedDowntimeStart} - {self.expectedDowntimeEnd}")
             Domoticz.Log(f"Summer mode: {'enabled' if self.useSummerMode else 'disabled'}")
+            if self.useSummerMode:
+                scene_names = {10: "Weg", 20: "Slapen", 30: "Thuis", 40: "Comfort", 50: "Manual"}
+                Domoticz.Log(f"Summer mode scene: {self.summerModeScene} ({scene_names.get(self.summerModeScene, 'Unknown')})")
         except Exception as e:
             Domoticz.Log(f"Error reading config.txt: {e}")
 
@@ -315,8 +329,13 @@ class BasePlugin:
             {"unit": programInfo, "name": "ProgramInfo", "typeName": "Text", "image": self.imageID},
         ]
 
-        if self.useSummerMode:
-            devices_to_create.append({"unit": summerMode, "name": "Zomermodus", "typeName": "Switch", "image": self.imageID})
+        devices_to_create.append({
+            "unit": summerMode,
+            "name": "Zomermodus",
+            "typeName": "Selector Switch",
+            "options": {"LevelActions": "|", "LevelNames": "|Uit|Aan", "LevelOffHidden": "true", "SelectorStyle": "0"},
+            "image": self.imageID
+        })
 
         for dev in devices_to_create:
             self.createDeviceIfNotExists(
@@ -333,6 +352,11 @@ class BasePlugin:
         if self.useZwave:
             self.setupP1Devices()
 
+        # Sync summerMode selector to the value stored in config.txt
+        if summerMode in Devices:
+            expected_level = "20" if self.useSummerMode else "10"
+            Devices[summerMode].Update(nValue=0, sValue=expected_level)
+
         self.fetchScenes()
         Domoticz.Heartbeat(self.heartbeat_interval)
 
@@ -348,7 +372,14 @@ class BasePlugin:
             setpoint = int(round(Level * 100))
             self.fetchJson(f"/happ_thermstat?action=setSetpoint&Setpoint={setpoint}")
             UpdateDevice(setTemp, 0, str(Level))
-            self.updateSceneFromSetpoint(Level)
+            summer_active = self.useSummerMode and summerMode in Devices and SafeInt(Devices[summerMode].sValue) == 20
+            if summer_active:
+                target_scene = self._summerSceneForSetpoint(Level)
+                current_scene_val = SafeInt(Devices[scene].sValue) if scene in Devices else None
+                if current_scene_val != target_scene:
+                    UpdateDevice(scene, 0, str(target_scene))
+            else:
+                self.updateSceneFromSetpoint(Level)
         elif Unit == scene:
             scene_level = int(Level)
             temp = self.scene_map.get(str(scene_level), None)
@@ -370,6 +401,40 @@ class BasePlugin:
             if prog_state is not None:
                 self.fetchJson(f"/happ_thermstat?action=changeSchemeState&state={prog_state}")
                 UpdateDevice(autoProgram, 0, str(prog_level))
+        elif Unit == summerMode:
+            level = int(Level)
+            enabled = level == 20
+            if self.updateConfigValue("SummerMode", "yes" if enabled else "no"):
+                self.useSummerMode = enabled
+            UpdateDevice(summerMode, 0, str(level))
+
+    def updateConfigValue(self, key, value):
+        config_path = os.path.join(Parameters["HomeFolder"], "config.txt")
+        try:
+            if os.path.isfile(config_path):
+                with open(config_path, "r", encoding="utf-8") as f:
+                    lines = f.readlines()
+                updated = False
+                new_lines = []
+                for line in lines:
+                    stripped = line.strip()
+                    if stripped.startswith(key + "=") or stripped.startswith(key + " ="):
+                        new_lines.append(f"{key}={value}\n")
+                        updated = True
+                    else:
+                        new_lines.append(line)
+                if not updated:
+                    new_lines.append(f"{key}={value}\n")
+                with open(config_path, "w", encoding="utf-8") as f:
+                    f.writelines(new_lines)
+                Domoticz.Log(f"config.txt updated: {key}={value}")
+                return True
+            else:
+                Domoticz.Log(f"config.txt not found, could not update {key}")
+                return False
+        except Exception as e:
+            Domoticz.Log(f"Error updating config.txt ({key}={value}): {e}")
+            return False
 
     def startCooldown(self, seconds=300):
         self.errorCooldown = seconds
@@ -499,14 +564,33 @@ class BasePlugin:
             thermostat_data = self.fetchJson("/happ_thermstat?action=getThermostatInfo")
 
         if thermostat_data and 'activeState' in thermostat_data:
-            toon_scene = self.idToScene(int(thermostat_data['activeState']))
-            current_scene_val = SafeInt(Devices[scene].sValue) if scene in Devices else None
-            if current_scene_val != toon_scene:
-                UpdateDevice(scene, 0, str(toon_scene))
+            # Skip scene update when summer mode is active; pinning is handled by updateThermostatDevices
+            summer_active = self.useSummerMode and summerMode in Devices and SafeInt(Devices[summerMode].sValue) == 20
+            if not summer_active:
+                toon_scene = self.idToScene(int(thermostat_data['activeState']))
+                current_scene_val = SafeInt(Devices[scene].sValue) if scene in Devices else None
+                if current_scene_val != toon_scene:
+                    UpdateDevice(scene, 0, str(toon_scene))
 
     def idToScene(self, id_):
         mapping = {0: 40, 1: 30, 2: 20, 3: 10}
         return mapping.get(id_, 50)
+
+    def _summerSceneForSetpoint(self, setpoint):
+        """Return the correct scene code when summer mode is active.
+        During summer mode, all Toon scenes are set to the same temperature (typically 10°C).
+        If the setpoint matches that common temperature, return SummerModeScene.
+        Otherwise the user has a manual override in place, so return Manual (50).
+        Assumption: all scene_map values are equal when summer mode is active."""
+        summer_temps = list(self.scene_map.values())
+        if not summer_temps:
+            return self.summerModeScene
+        # Validate that all scene temps are equal; log a warning if not
+        if len(set(round(t, 1) for t in summer_temps)) > 1:
+            Domoticz.Debug(f"_summerSceneForSetpoint: scene temps are not all equal: {summer_temps}")
+        if abs(setpoint - summer_temps[0]) < 0.05:
+            return self.summerModeScene
+        return 50
 
     def updateSceneFromSetpoint(self, setpoint):
         matched_scene_id = None
@@ -532,11 +616,13 @@ class BasePlugin:
             UpdateDevice(setTemp, 0, "%.1f" % setpoint)
 
             # When summer mode is active all scenes share the same setpoint (10°C),
-            # so normal scene matching would oscillate. Always pin the scene to Manual.
-            if self.useSummerMode and summerMode in Devices and Devices[summerMode].nValue == 1:
+            # so normal scene matching would oscillate. Pin the scene based on the setpoint:
+            # summer temp → SummerModeScene, any other temp → Manual.
+            if self.useSummerMode and summerMode in Devices and SafeInt(Devices[summerMode].sValue) == 20:
+                target_scene = self._summerSceneForSetpoint(setpoint)
                 current_scene_val = SafeInt(Devices[scene].sValue) if scene in Devices else None
-                if current_scene_val != 50:
-                    UpdateDevice(scene, 0, "50")
+                if current_scene_val != target_scene:
+                    UpdateDevice(scene, 0, str(target_scene))
             elif 'activeState' in Response:
                 toon_scene = self.idToScene(int(Response['activeState']))
                 current_scene_val = SafeInt(Devices[scene].sValue) if scene in Devices else None
@@ -601,18 +687,25 @@ class BasePlugin:
         if 'summerMode' not in data:
             Domoticz.Debug("readSummerMode: 'summerMode' key not found in tscSettings.userSettings.json")
             return
-        nval = 1 if data['summerMode'] else 0
-        Domoticz.Debug(f"Summer mode: {'On' if nval else 'Off'}")
+        toon_summer_on = bool(data['summerMode'])
+        target_level = "20" if toon_summer_on else "10"
+        Domoticz.Debug(f"Summer mode: {'Aan' if toon_summer_on else 'Uit'}")
         if summerMode in Devices:
-            if Devices[summerMode].nValue != nval:
-                Domoticz.Log(f"Summer mode changed: {'On' if nval else 'Off'}")
-                UpdateDevice(summerMode, nval, "On" if nval else "Off")
+            if SafeInt(Devices[summerMode].sValue) != int(target_level):
+                Domoticz.Log(f"Summer mode changed: {'Aan' if toon_summer_on else 'Uit'}")
+                UpdateDevice(summerMode, 0, target_level)
                 self.fetchScenes()
-                if nval == 1:
-                    # Summer mode just turned on: pin scene to Manual to prevent oscillation
+                if toon_summer_on:
+                    # Summer mode just turned on: pin scene based on current setpoint
+                    current_setpoint = float(Devices[setTemp].sValue) if setTemp in Devices else None
+                    if current_setpoint is None:
+                        Domoticz.Debug("readSummerMode: setTemp device not available, defaulting scene to SummerModeScene")
+                        target_scene = self.summerModeScene
+                    else:
+                        target_scene = self._summerSceneForSetpoint(current_setpoint)
                     current_scene_val = SafeInt(Devices[scene].sValue) if scene in Devices else None
-                    if current_scene_val != 50:
-                        UpdateDevice(scene, 0, "50")
+                    if current_scene_val != target_scene:
+                        UpdateDevice(scene, 0, str(target_scene))
 
     def updateZwaveDevices(self, Response):
         def safe_float(value, fallback=0.0):
@@ -727,6 +820,11 @@ def UpdateDevice(Unit, nValue, sValue, TimedOut=0):
                     boiler_labels = {"10": "Uit", "20": "CV", "30": "WW"}
                     readable_new = boiler_labels.get(str(sValue), str(sValue))
                     readable_old = boiler_labels.get(str(old_s), str(old_s))
+
+                if Unit == summerMode:
+                    summer_labels = {"10": "Uit", "20": "Aan"}
+                    readable_new = summer_labels.get(str(sValue), str(sValue))
+                    readable_old = summer_labels.get(str(old_s), str(old_s))
 
                 dev.Update(nValue=nValue, sValue=str(sValue), TimedOut=TimedOut)
 
