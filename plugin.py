@@ -1,8 +1,8 @@
 """
-<plugin key="RootedToonPlug" name="Toon Rooted" author="MadPatrick" version="2.8.0" externallink="https://github.com/MadPatrick/domoticz_toon">
+<plugin key="RootedToonPlug" name="Toon Rooted" author="MadPatrick" version="2.9.0" externallink="https://github.com/MadPatrick/domoticz_toon">
       <description>
           <br/><h2>Domoticz Plugin for Toon (Rooted)</h2>
-          <br/>Version: 2.8.0
+          <br/>Version: 2.9.0
           <br/><br/>
           This plugin allows Domoticz to communicate with a Rooted Toon thermostat. Its main functionalities are:
           <ul>
@@ -11,7 +11,7 @@
               <li>Set refresh intervals for Scenes and real-time data independently.</li>
               <li>Read P1 smart meter data, with configurable device addresses for selective monitoring.</li>
               <li>Support for different Toon versions: v1, v2, or user-defined.</li>
-              <li>Summer mode status from Toon user settings (optional, enable via <code>SummerMode=yes</code> in config.txt).</li>
+              <li>Summer mode selector: enable/disable via the "Zomermodus" device in Domoticz; state is persisted in config.txt and reflects Toon's actual summer mode.</li>
           </ul>
           <br/>
           The plugin creates the following Domoticz devices:
@@ -329,8 +329,13 @@ class BasePlugin:
             {"unit": programInfo, "name": "ProgramInfo", "typeName": "Text", "image": self.imageID},
         ]
 
-        if self.useSummerMode:
-            devices_to_create.append({"unit": summerMode, "name": "Zomermodus", "typeName": "Switch", "image": self.imageID})
+        devices_to_create.append({
+            "unit": summerMode,
+            "name": "Zomermodus",
+            "typeName": "Selector Switch",
+            "options": {"LevelActions": "|", "LevelNames": "|Uit|Aan", "LevelOffHidden": "true", "SelectorStyle": "0"},
+            "image": self.imageID
+        })
 
         for dev in devices_to_create:
             self.createDeviceIfNotExists(
@@ -347,6 +352,11 @@ class BasePlugin:
         if self.useZwave:
             self.setupP1Devices()
 
+        # Sync summerMode selector to the value stored in config.txt
+        if summerMode in Devices:
+            expected_level = "20" if self.useSummerMode else "10"
+            Devices[summerMode].Update(nValue=0, sValue=expected_level)
+
         self.fetchScenes()
         Domoticz.Heartbeat(self.heartbeat_interval)
 
@@ -362,7 +372,7 @@ class BasePlugin:
             setpoint = int(round(Level * 100))
             self.fetchJson(f"/happ_thermstat?action=setSetpoint&Setpoint={setpoint}")
             UpdateDevice(setTemp, 0, str(Level))
-            summer_active = self.useSummerMode and summerMode in Devices and Devices[summerMode].nValue == 1
+            summer_active = self.useSummerMode and summerMode in Devices and SafeInt(Devices[summerMode].sValue) == 20
             if summer_active:
                 target_scene = self._summerSceneForSetpoint(Level)
                 current_scene_val = SafeInt(Devices[scene].sValue) if scene in Devices else None
@@ -391,6 +401,37 @@ class BasePlugin:
             if prog_state is not None:
                 self.fetchJson(f"/happ_thermstat?action=changeSchemeState&state={prog_state}")
                 UpdateDevice(autoProgram, 0, str(prog_level))
+        elif Unit == summerMode:
+            level = int(Level)
+            enabled = level == 20
+            self.useSummerMode = enabled
+            self.updateConfigValue("SummerMode", "yes" if enabled else "no")
+            UpdateDevice(summerMode, 0, str(level))
+
+    def updateConfigValue(self, key, value):
+        config_path = os.path.join(Parameters["HomeFolder"], "config.txt")
+        try:
+            if os.path.isfile(config_path):
+                with open(config_path, "r", encoding="utf-8") as f:
+                    lines = f.readlines()
+                updated = False
+                new_lines = []
+                for line in lines:
+                    stripped = line.strip()
+                    if stripped.startswith(key + "=") or stripped.startswith(key + " ="):
+                        new_lines.append(f"{key}={value}\n")
+                        updated = True
+                    else:
+                        new_lines.append(line)
+                if not updated:
+                    new_lines.append(f"{key}={value}\n")
+                with open(config_path, "w", encoding="utf-8") as f:
+                    f.writelines(new_lines)
+                Domoticz.Log(f"config.txt updated: {key}={value}")
+            else:
+                Domoticz.Log(f"config.txt not found, could not update {key}")
+        except Exception as e:
+            Domoticz.Log(f"Error updating config.txt ({key}={value}): {e}")
 
     def startCooldown(self, seconds=300):
         self.errorCooldown = seconds
@@ -521,7 +562,7 @@ class BasePlugin:
 
         if thermostat_data and 'activeState' in thermostat_data:
             # Skip scene update when summer mode is active; pinning is handled by updateThermostatDevices
-            summer_active = self.useSummerMode and summerMode in Devices and Devices[summerMode].nValue == 1
+            summer_active = self.useSummerMode and summerMode in Devices and SafeInt(Devices[summerMode].sValue) == 20
             if not summer_active:
                 toon_scene = self.idToScene(int(thermostat_data['activeState']))
                 current_scene_val = SafeInt(Devices[scene].sValue) if scene in Devices else None
@@ -574,7 +615,7 @@ class BasePlugin:
             # When summer mode is active all scenes share the same setpoint (10°C),
             # so normal scene matching would oscillate. Pin the scene based on the setpoint:
             # summer temp → SummerModeScene, any other temp → Manual.
-            if self.useSummerMode and summerMode in Devices and Devices[summerMode].nValue == 1:
+            if self.useSummerMode and summerMode in Devices and SafeInt(Devices[summerMode].sValue) == 20:
                 target_scene = self._summerSceneForSetpoint(setpoint)
                 current_scene_val = SafeInt(Devices[scene].sValue) if scene in Devices else None
                 if current_scene_val != target_scene:
@@ -643,14 +684,15 @@ class BasePlugin:
         if 'summerMode' not in data:
             Domoticz.Debug("readSummerMode: 'summerMode' key not found in tscSettings.userSettings.json")
             return
-        nval = 1 if data['summerMode'] else 0
-        Domoticz.Debug(f"Summer mode: {'On' if nval else 'Off'}")
+        toon_summer_on = bool(data['summerMode'])
+        target_level = "20" if toon_summer_on else "10"
+        Domoticz.Debug(f"Summer mode: {'Aan' if toon_summer_on else 'Uit'}")
         if summerMode in Devices:
-            if Devices[summerMode].nValue != nval:
-                Domoticz.Log(f"Summer mode changed: {'On' if nval else 'Off'}")
-                UpdateDevice(summerMode, nval, "On" if nval else "Off")
+            if SafeInt(Devices[summerMode].sValue) != int(target_level):
+                Domoticz.Log(f"Summer mode changed: {'Aan' if toon_summer_on else 'Uit'}")
+                UpdateDevice(summerMode, 0, target_level)
                 self.fetchScenes()
-                if nval == 1:
+                if toon_summer_on:
                     # Summer mode just turned on: pin scene based on current setpoint
                     current_setpoint = float(Devices[setTemp].sValue) if setTemp in Devices else None
                     if current_setpoint is None:
@@ -775,6 +817,11 @@ def UpdateDevice(Unit, nValue, sValue, TimedOut=0):
                     boiler_labels = {"10": "Uit", "20": "CV", "30": "WW"}
                     readable_new = boiler_labels.get(str(sValue), str(sValue))
                     readable_old = boiler_labels.get(str(old_s), str(old_s))
+
+                if Unit == summerMode:
+                    summer_labels = {"10": "Uit", "20": "Aan"}
+                    readable_new = summer_labels.get(str(sValue), str(sValue))
+                    readable_old = summer_labels.get(str(old_s), str(old_s))
 
                 dev.Update(nValue=nValue, sValue=str(sValue), TimedOut=TimedOut)
 
