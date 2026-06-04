@@ -127,6 +127,7 @@ class BasePlugin:
         self.expectedDowntimeEnd   = "04:00"
         self.expectedDowntimeLogged = False
         self.useSummerMode = False
+        self.summerModeScene = 50
 
     # --- Config laden ---
     def loadConfig(self):
@@ -161,8 +162,21 @@ class BasePlugin:
                                 self.useSummerMode = False
                             else:
                                 Domoticz.Log(f"Invalid value for SummerMode: '{value}', expected 'yes' or 'no'. Default 'no' used.")
+                        elif key == "SummerModeScene":
+                            valid_codes = {10, 20, 30, 40, 50}
+                            try:
+                                code = int(value)
+                                if code in valid_codes:
+                                    self.summerModeScene = code
+                                else:
+                                    Domoticz.Log(f"Invalid value for SummerModeScene: '{value}', expected one of {sorted(valid_codes)}. Default 50 used.")
+                            except ValueError:
+                                Domoticz.Log(f"Invalid value for SummerModeScene: '{value}', expected a numeric code. Default 50 used.")
             Domoticz.Log(f"Expected downtime window: {self.expectedDowntimeStart} - {self.expectedDowntimeEnd}")
             Domoticz.Log(f"Summer mode: {'enabled' if self.useSummerMode else 'disabled'}")
+            if self.useSummerMode:
+                scene_names = {10: "Weg", 20: "Slapen", 30: "Thuis", 40: "Comfort", 50: "Manual"}
+                Domoticz.Log(f"Summer mode scene: {self.summerModeScene} ({scene_names.get(self.summerModeScene, 'Unknown')})")
         except Exception as e:
             Domoticz.Log(f"Error reading config.txt: {e}")
 
@@ -535,8 +549,8 @@ class BasePlugin:
             # so normal scene matching would oscillate. Always pin the scene to Manual.
             if self.useSummerMode and summerMode in Devices and Devices[summerMode].nValue == 1:
                 current_scene_val = SafeInt(Devices[scene].sValue) if scene in Devices else None
-                if current_scene_val != 50:
-                    UpdateDevice(scene, 0, "50")
+                if current_scene_val != self.summerModeScene:
+                    UpdateDevice(scene, 0, str(self.summerModeScene))
             elif 'activeState' in Response:
                 toon_scene = self.idToScene(int(Response['activeState']))
                 current_scene_val = SafeInt(Devices[scene].sValue) if scene in Devices else None
@@ -609,10 +623,10 @@ class BasePlugin:
                 UpdateDevice(summerMode, nval, "On" if nval else "Off")
                 self.fetchScenes()
                 if nval == 1:
-                    # Summer mode just turned on: pin scene to Manual to prevent oscillation
+                    # Summer mode just turned on: pin scene to configured SummerModeScene to prevent oscillation
                     current_scene_val = SafeInt(Devices[scene].sValue) if scene in Devices else None
-                    if current_scene_val != 50:
-                        UpdateDevice(scene, 0, "50")
+                    if current_scene_val != self.summerModeScene:
+                        UpdateDevice(scene, 0, str(self.summerModeScene))
 
     def updateZwaveDevices(self, Response):
         def safe_float(value, fallback=0.0):
