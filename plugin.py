@@ -362,7 +362,14 @@ class BasePlugin:
             setpoint = int(round(Level * 100))
             self.fetchJson(f"/happ_thermstat?action=setSetpoint&Setpoint={setpoint}")
             UpdateDevice(setTemp, 0, str(Level))
-            self.updateSceneFromSetpoint(Level)
+            summer_active = self.useSummerMode and summerMode in Devices and Devices[summerMode].nValue == 1
+            if summer_active:
+                target_scene = self._summerSceneForSetpoint(Level)
+                current_scene_val = SafeInt(Devices[scene].sValue) if scene in Devices else None
+                if current_scene_val != target_scene:
+                    UpdateDevice(scene, 0, str(target_scene))
+            else:
+                self.updateSceneFromSetpoint(Level)
         elif Unit == scene:
             scene_level = int(Level)
             temp = self.scene_map.get(str(scene_level), None)
@@ -525,6 +532,22 @@ class BasePlugin:
         mapping = {0: 40, 1: 30, 2: 20, 3: 10}
         return mapping.get(id_, 50)
 
+    def _summerSceneForSetpoint(self, setpoint):
+        """Return the correct scene code when summer mode is active.
+        During summer mode, all Toon scenes are set to the same temperature (typically 10°C).
+        If the setpoint matches that common temperature, return SummerModeScene.
+        Otherwise the user has a manual override in place, so return Manual (50).
+        Assumption: all scene_map values are equal when summer mode is active."""
+        summer_temps = list(self.scene_map.values())
+        if not summer_temps:
+            return self.summerModeScene
+        # Validate that all scene temps are equal; log a warning if not
+        if len(set(round(t, 1) for t in summer_temps)) > 1:
+            Domoticz.Debug(f"_summerSceneForSetpoint: scene temps are not all equal: {summer_temps}")
+        if abs(setpoint - summer_temps[0]) < 0.05:
+            return self.summerModeScene
+        return 50
+
     def updateSceneFromSetpoint(self, setpoint):
         matched_scene_id = None
         for scene_id, temp in self.scene_map.items():
@@ -549,11 +572,13 @@ class BasePlugin:
             UpdateDevice(setTemp, 0, "%.1f" % setpoint)
 
             # When summer mode is active all scenes share the same setpoint (10°C),
-            # so normal scene matching would oscillate. Always pin the scene to Manual.
+            # so normal scene matching would oscillate. Pin the scene based on the setpoint:
+            # summer temp → SummerModeScene, any other temp → Manual.
             if self.useSummerMode and summerMode in Devices and Devices[summerMode].nValue == 1:
+                target_scene = self._summerSceneForSetpoint(setpoint)
                 current_scene_val = SafeInt(Devices[scene].sValue) if scene in Devices else None
-                if current_scene_val != self.summerModeScene:
-                    UpdateDevice(scene, 0, str(self.summerModeScene))
+                if current_scene_val != target_scene:
+                    UpdateDevice(scene, 0, str(target_scene))
             elif 'activeState' in Response:
                 toon_scene = self.idToScene(int(Response['activeState']))
                 current_scene_val = SafeInt(Devices[scene].sValue) if scene in Devices else None
@@ -626,10 +651,16 @@ class BasePlugin:
                 UpdateDevice(summerMode, nval, "On" if nval else "Off")
                 self.fetchScenes()
                 if nval == 1:
-                    # Summer mode just turned on: pin scene to configured SummerModeScene to prevent oscillation
+                    # Summer mode just turned on: pin scene based on current setpoint
+                    current_setpoint = float(Devices[setTemp].sValue) if setTemp in Devices else None
+                    if current_setpoint is None:
+                        Domoticz.Debug("readSummerMode: setTemp device not available, defaulting scene to SummerModeScene")
+                        target_scene = self.summerModeScene
+                    else:
+                        target_scene = self._summerSceneForSetpoint(current_setpoint)
                     current_scene_val = SafeInt(Devices[scene].sValue) if scene in Devices else None
-                    if current_scene_val != self.summerModeScene:
-                        UpdateDevice(scene, 0, str(self.summerModeScene))
+                    if current_scene_val != target_scene:
+                        UpdateDevice(scene, 0, str(target_scene))
 
     def updateZwaveDevices(self, Response):
         def safe_float(value, fallback=0.0):
