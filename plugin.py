@@ -592,7 +592,7 @@ class BasePlugin:
             if 0 <= burner_idx < len(burnerInfos):
                 UpdateDevice(boilerState, 0, burnerInfos[burner_idx])
         if 'currentModulationLevel' in Response:
-            UpdateDevice(boilerModulation, 0, str(int(Response['currentModulationLevel'])))
+            UpdateDevice(boilerModulation, 0, str(int(Response['currentModulationLevel'])), always=True)
 
     def updateProgramInfo(self, Response):
         if all(k in Response for k in ("nextProgram","nextSetpoint","nextTime","nextState")):
@@ -613,20 +613,20 @@ class BasePlugin:
 
     def updateBoilerDevices(self, data):
         try:
-            def safe_update(unit, value):
+            def safe_update(unit, value, always=False):
                 if unit in Devices:
                     dev = Devices[unit]
-                    if dev.sValue != str(value):
-                        UpdateDevice(unit, 0, str(value))
+                    if always or dev.sValue != str(value):
+                        UpdateDevice(unit, 0, str(value), always=always)
 
             if 'boilerPressure' in data and data['boilerPressure'] is not None:
-                safe_update(boilerPressure, float(data['boilerPressure']))
+                safe_update(boilerPressure, float(data['boilerPressure']), always=True)
 
             if 'boilerSetpoint' in data and data['boilerSetpoint'] is not None:
                 safe_update(boilerSetPoint, float(data['boilerSetpoint']))
 
             if 'boilerModulationLevel' in data and data['boilerModulationLevel'] is not None:
-                safe_update(boilerModulation, int(data['boilerModulationLevel']))
+                safe_update(boilerModulation, int(data['boilerModulationLevel']), always=True)
 
         except Exception as e:
             Domoticz.Error(f"Error processing boiler data: {e}")
@@ -724,11 +724,11 @@ def SafeInt(value):
     except (ValueError, TypeError):
         return None
 
-def UpdateDevice(Unit, nValue, sValue, TimedOut=0):
+def UpdateDevice(Unit, nValue, sValue, TimedOut=0, always=False):
     try:
         if Unit in Devices:
             dev = Devices[Unit]
-            if (dev.nValue != nValue) or (dev.sValue != str(sValue)):
+            if always or (dev.nValue != nValue) or (dev.sValue != str(sValue)):
                 old_s = dev.sValue
                 readable_new = sValue
                 readable_old = old_s
