@@ -128,6 +128,21 @@ class BasePlugin:
         self.expectedDowntimeLogged = False
         self.useSummerMode = False
 
+    def isValidTime(self, value):
+        try:
+            hour, minute = value.split(":")
+            return (
+                len(hour) == 2 and len(minute) == 2 and
+                hour.isdigit() and minute.isdigit() and
+                0 <= int(hour) <= 23 and 0 <= int(minute) <= 59
+            )
+        except (ValueError, TypeError):
+            return False
+
+    def timeToMinutes(self, value):
+        hour, minute = value.split(":")
+        return int(hour) * 60 + int(minute)
+
     # --- Config laden ---
     def loadConfig(self):
         config_path = os.path.join(Parameters["HomeFolder"], "config.txt")
@@ -145,12 +160,12 @@ class BasePlugin:
                         key = key.strip()
                         value = value.strip()
                         if key == "DowntimeStart":
-                            if len(value) == 5 and value[2] == ":" and value[:2].isdigit() and value[3:].isdigit():
+                            if self.isValidTime(value):
                                 self.expectedDowntimeStart = value
                             else:
                                 Domoticz.Log(f"Invalid format for DowntimeStart: '{value}', default values used.")
                         elif key == "DowntimeEnd":
-                            if len(value) == 5 and value[2] == ":" and value[:2].isdigit() and value[3:].isdigit():
+                            if self.isValidTime(value):
                                 self.expectedDowntimeEnd = value
                             else:
                                 Domoticz.Log(f"Invalid format for DowntimeEnd: '{value}', default values used.")
@@ -196,7 +211,7 @@ class BasePlugin:
         detected_version = None
 
         if Parameters["Mode5"]:
-            paramList = Parameters["Mode5"].split(";")
+            paramList = [addr.strip() for addr in Parameters["Mode5"].split(";") if addr.strip()]
             if len(paramList) == 5:
                 self.ia_gas, self.ia_ednt, self.ia_edlt, self.ia_ernt, self.ia_erlt = paramList
                 detected_version = "Usermode"
@@ -422,8 +437,14 @@ class BasePlugin:
         Domoticz.Log(f"Connection failed. Cooldown started of {seconds}s, next attempt in {seconds // 60} minutes.")
 
     def isExpectedDowntime(self):
-        now = datetime.now().strftime("%H:%M")
-        return self.expectedDowntimeStart <= now <= self.expectedDowntimeEnd
+        now = datetime.now()
+        now_minutes = now.hour * 60 + now.minute
+        start = self.timeToMinutes(self.expectedDowntimeStart)
+        end = self.timeToMinutes(self.expectedDowntimeEnd)
+
+        if start <= end:
+            return start <= now_minutes <= end
+        return now_minutes >= start or now_minutes <= end
 
     def onHeartbeat(self):
         # --- Cooldown check ---
@@ -475,7 +496,7 @@ class BasePlugin:
 
     def _doBoilerAndZwave(self, results=None):
         """Retrieve boiler and Z-Wave data and process it. Optionally keep a results list."""
-        boiler_data = self.fetchJson("/boilerstatus/boilervalues.txt")
+        boiler_data = self.fetchJson("/boilerstatus/boilervalues.txt", critical=False)
         if results is not None:
             results.append(boiler_data is not None)
         if boiler_data:
@@ -522,7 +543,7 @@ class BasePlugin:
     def fetchScenes(self, thermostat_data=None):
         old_scene_map = self.scene_map.copy()
 
-        data = self.fetchJson("/hcb_config?action=getObjectConfigTree&package=happ_thermstat&internalAddress=thermostatStates")
+        data = self.fetchJson("/hcb_config?action=getObjectConfigTree&package=happ_thermstat&internalAddress=thermostatStates", critical=False)
         if data and 'states' in data and len(data['states']) > 0:
             state_list = data['states'][0]['state']
             self.scene_map = {}
