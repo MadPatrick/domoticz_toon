@@ -1,8 +1,8 @@
 """
-<plugin key="RootedToonPlug" name="Toon Rooted" author="MadPatrick" version="2.8.2" externallink="https://github.com/MadPatrick/domoticz_toon">
+<plugin key="RootedToonPlug" name="Toon Rooted" author="MadPatrick" version="2.8.3" externallink="https://github.com/MadPatrick/domoticz_toon">
       <description>
           <br/><h2>Domoticz Plugin for Toon (Rooted)</h2>
-          <br/>Version: 2.8.2
+          <br/>Version: 2.8.3
           <br/><br/>
           This plugin allows Domoticz to communicate with a Rooted Toon thermostat. Its main functionalities are:
           <ul>
@@ -591,8 +591,6 @@ class BasePlugin:
             burner_idx = int(Response['burnerInfo'])
             if 0 <= burner_idx < len(burnerInfos):
                 UpdateDevice(boilerState, 0, burnerInfos[burner_idx])
-        if 'currentModulationLevel' in Response:
-            UpdateDevice(boilerModulation, 0, str(int(Response['currentModulationLevel'])), always=True)
 
     def updateProgramInfo(self, Response):
         if all(k in Response for k in ("nextProgram","nextSetpoint","nextTime","nextState")):
