@@ -18,7 +18,7 @@ Follow these steps to install the plugin in your Domoticz environment.
     ```
 2.  Clone the repository:
     ```bash
-    git clone https://github.com/MadPatrick/domoticz_toon toon
+    git clone https://github.com/MadPatrick/domoticz_toon Toon_Thermostat
     ```
 3.  *(Optional — only needed for Summer Mode)* **Create a symlink** on the Toon via SSH so the plugin can read the settings file:
     ```bash
