@@ -1,7 +1,7 @@
 # domoticz-rooted-toon 🏠🌡️
 ![Status](https://img.shields.io/badge/Status-Stable-brightgreen)
-![Domoticz](https://img.shields.io/badge/Domoticz-2022%2B-blue)
-![Python](https://img.shields.io/badge/Python-3.7+-yellow)
+![Domoticz](https://img.shields.io/badge/Domoticz-Python%20Plugin%20Framework-blue)
+![Python](https://img.shields.io/badge/Python-3.x-yellow)
 ![License](https://img.shields.io/badge/License-MIT-lightgrey)
 
 A Python plugin to interface Domoticz with a **rooted Toon thermostat**.
@@ -9,6 +9,27 @@ A Python plugin to interface Domoticz with a **rooted Toon thermostat**.
 This plugin enables full control over setpoints and program synchronization, while providing extensive monitoring of energy data (via P1 port or Z-Wave) and boiler status.
 
 ## 📥 Installation
+
+### Prerequisites
+
+1. A recent Domoticz installation with Python plugin support enabled.
+2. Python 3 with the matching Python development package for your system.
+3. Install the required Python library:
+
+```bash
+sudo apt-get update
+sudo apt-get install python3 python3-dev python3-requests
+```
+
+Or install the Python dependency with pip:
+
+```bash
+python3 -m pip install -r requirements.txt
+```
+
+`Domoticz` is provided by Domoticz and is not a pip dependency.
+
+### Install the plugin
 
 Follow these steps to install the plugin in your Domoticz environment.
 
