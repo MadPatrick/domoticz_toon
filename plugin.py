@@ -350,13 +350,12 @@ class BasePlugin:
             # Alleen updaten in Domoticz als de Toon API akkoord geeft
             if self.fetchJson(f"/happ_thermstat?action=setSetpoint&Setpoint={setpoint}") is not None:
                 UpdateDevice(setTemp, 0, str(Level))
-                summer_active = self.useSummerMode and summerMode in Devices and Devices[summerMode].nValue == 1
-                if not summer_active:
+                if not self.isSummerModeActive():
                     self.updateSceneFromSetpoint(Level)
         elif Unit == scene:
             scene_level = int(Level)
             temp = self.scene_map.get(str(scene_level), None)
-            if temp is not None:
+            if temp is not None and not self.isSummerModeActive():
                 if self.fetchJson(f"/happ_thermstat?action=setSetpoint&Setpoint={int(temp*100)}") is not None:
                     UpdateDevice(setTemp, 0, str(temp))
             state_map = {10: 3, 20: 2, 30: 1, 40: 0}
@@ -376,6 +375,11 @@ class BasePlugin:
             if self.updateConfigValue("SummerMode", "yes" if enabled else "no"):
                 self.useSummerMode = enabled
                 UpdateDevice(summerMode, 1 if enabled else 0, "On" if enabled else "Off")
+                if not enabled:
+                    self.fetchScenes()
+
+    def isSummerModeActive(self):
+        return self.useSummerMode and summerMode in Devices and Devices[summerMode].nValue == 1
 
     def updateConfigValue(self, key, value):
         config_path = os.path.join(Parameters["HomeFolder"], "config.txt")
@@ -520,6 +524,10 @@ class BasePlugin:
 
     # --- Scenes ophalen ---
     def fetchScenes(self, thermostat_data=None):
+        if self.isSummerModeActive():
+            Domoticz.Debug("Summer mode active, automatic scene refresh skipped.")
+            return
+
         old_scene_map = self.scene_map.copy()
 
         # critical=False gezet om onnodige cooldowns bij config-tree fouten te voorkomen
@@ -553,6 +561,10 @@ class BasePlugin:
         return mapping.get(id_, 50)
 
     def updateSceneFromSetpoint(self, setpoint):
+        if self.isSummerModeActive():
+            Domoticz.Debug("Summer mode active, automatic scene sync from setpoint skipped.")
+            return
+
         matched_scene_id = None
         for scene_id, temp in self.scene_map.items():
             if abs(temp - setpoint) < 0.05:
@@ -575,13 +587,16 @@ class BasePlugin:
             setpoint = float(Response['currentSetpoint']) / 100
             UpdateDevice(setTemp, 0, "%.1f" % setpoint)
 
-            if 'activeState' in Response:
-                toon_scene = self.idToScene(int(Response['activeState']))
-                current_scene_val = SafeInt(Devices[scene].sValue) if scene in Devices else None
-                if current_scene_val != toon_scene:
-                    UpdateDevice(scene, 0, str(toon_scene))
-            elif not (self.useSummerMode and summerMode in Devices and Devices[summerMode].nValue == 1):
-                self.updateSceneFromSetpoint(setpoint)
+            if not self.isSummerModeActive():
+                if 'activeState' in Response:
+                    toon_scene = self.idToScene(int(Response['activeState']))
+                    current_scene_val = SafeInt(Devices[scene].sValue) if scene in Devices else None
+                    if current_scene_val != toon_scene:
+                        UpdateDevice(scene, 0, str(toon_scene))
+                else:
+                    self.updateSceneFromSetpoint(setpoint)
+            else:
+                Domoticz.Debug("Summer mode active, automatic scene sync from thermostat data skipped.")
             self.updateProgramInfo(Response)
         if 'programState' in Response:
             prog_idx = int(Response['programState'])
@@ -638,7 +653,8 @@ class BasePlugin:
             if Devices[summerMode].nValue != (1 if toon_summer_on else 0):
                 Domoticz.Log(f"Summer mode changed: {'Aan' if toon_summer_on else 'Uit'}")
                 UpdateDevice(summerMode, 1 if toon_summer_on else 0, "On" if toon_summer_on else "Off")
-                self.fetchScenes()
+                if not toon_summer_on:
+                    self.fetchScenes()
 
     def updateZwaveDevices(self, Response):
         def safe_float(value, fallback=0.0):

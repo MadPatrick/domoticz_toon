@@ -100,9 +100,9 @@ If the file is missing, the plugin falls back to the built-in defaults (`03:00`�
 
 ### ☀️ Summer Mode (`SummerMode`)
 
-When Summer Mode is active, all Toon scene setpoints are set to a low value (e.g. 10 °C) because heating is not needed. This prevents Domoticz from interpreting those scenes as normal temperature changes.
+When Summer Mode is active, all Toon scene setpoints are usually set to a low value (e.g. 10 C) because heating is not needed. The plugin therefore stops automatic scene refresh/synchronization from Toon while Summer Mode is active, so Domoticz will not bounce between scenes that all have the same target temperature.
 
-In Summer Mode the Scene selector in Domoticz is **fully manual**: the plugin will not override it automatically. You can freely switch between Weg, Slapen, Thuis, Comfort, or Manual at any time to control the Toon display (and setpoint).
+In Summer Mode the Scene selector in Domoticz is **fully manual**: the plugin will not override it automatically. You can freely switch between Weg, Slapen, Thuis, Comfort, or Manual at any time. Selecting Weg, Slapen, Thuis, or Comfort still sends the scene state to Toon; the plugin just does not force a cached scene setpoint first. This keeps Slapen usable at night for the screen sleep behavior while avoiding setpoint oscillation.
 
 Enable Summer Mode by adding the following line to `config.txt`:
 
