@@ -187,6 +187,11 @@ class BasePlugin:
                 Devices[unit].Update(nValue=0, sValue=initialValue)
                 Domoticz.Log(f"Device '{name}' (Unit {unit}) initialized to 0")
 
+    def _apply_device_icon(self, unit, imageID):
+        if imageID and unit in Devices and Devices[unit].Image != imageID:
+            device = Devices[unit]
+            device.Update(nValue=device.nValue, sValue=device.sValue, Image=imageID)
+
     # --- P1 / Zwave helper ---
     def setupP1Devices(self):
         paramList = []
@@ -283,10 +288,12 @@ class BasePlugin:
         for pack_name, attr_name in icon_packs.items():
             creating_new_icon = pack_name not in Images
             try:
-                if creating_new_icon:
-                    Domoticz.Image(f"{pack_name}.zip").Create()
+                Domoticz.Image(f"{pack_name}.zip").Create()
                 if pack_name in Images:
                     setattr(self, attr_name, Images[pack_name].ID)
+                    imageID = getattr(self, attr_name)
+                    Domoticz.Log("Icons created and loaded." if creating_new_icon else
+                                 f"Icons found in database (ImageID={imageID}).")
                 else:
                     Domoticz.Error(f"Unable to load icon pack '{pack_name}.zip'")
             except Exception as e:
@@ -316,6 +323,7 @@ class BasePlugin:
                 used=dev.get("used", 1),
                 image=dev.get("image")
             )
+            self._apply_device_icon(dev["unit"], dev.get("image"))
 
         if self.useZwave:
             self.setupP1Devices()
