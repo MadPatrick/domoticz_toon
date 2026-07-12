@@ -1,34 +1,24 @@
 """
 <plugin key="RootedToonPlug" name="Toon Rooted" author="MadPatrick" version="2.8.4" externallink="https://github.com/MadPatrick/domoticz_toon">
       <description>
-          <br/><h2>Domoticz Plugin for Toon (Rooted)</h2>
-          <br/>Version: 2.8.4
-          <br/><br/>
-          This plugin allows Domoticz to communicate with a Rooted Toon thermostat. Its main functionalities are:
+          <h2>Toon Rooted</h2>
+          <p><strong>Version:</strong> 2.8.4</p>
+          <p>Connects Domoticz to a rooted Toon thermostat through its local API.</p>
+          <h3>Features</h3>
           <ul>
-              <li>Control and synchronize Scenes, Programs, and Setpoints between Domoticz and Toon.</li>
-              <li>Read and update temperature and energy data from the Toon device.</li>
-              <li>Set refresh intervals for Scenes and real-time data independently.</li>
-              <li>Read P1 smart meter data, with configurable device addresses for selective monitoring.</li>
-              <li>Support for different Toon versions: v1, v2, or user-defined.</li>
-              <li>Summer mode switch: enable/disable via the "Zomermodus" device in Domoticz; state is persisted in config.txt and reflects Toon's actual summer mode.</li>
+              <li>Current temperature, setpoint, scenes and thermostat program control.</li>
+              <li>Boiler pressure, operating mode, modulation and setpoint information.</li>
+              <li>Optional electricity and gas monitoring through Toon's P1/Z-Wave interface.</li>
+              <li>Automatic P1 address detection for Toon v1 and v2, with manual address support.</li>
+              <li>Configurable summer mode and expected daily downtime through <code>config.txt</code>.</li>
           </ul>
-          <br/>
-          The plugin creates the following Domoticz devices:
-          <ul>
-              <li>Current temperature and setpoint</li>
-              <li>Heating/cooling status</li>
-              <li>Active Scenes and Programs</li>
-              <li>Energy consumption (electricity and gas) from P1 meter</li>
-              <li>Individual P1 devices as defined in the plugin configuration</li>
-          </ul>
-          <br/>
-          Fields left empty, such as P1 addresses, will be automatically detected by the plugin.
+          <h3>Configuration</h3>
+          <p>Enter the rooted Toon address and select its version. Leave P1 addresses empty for automatic detection.</p>
       </description>
       <params>
         <param field="Address" label="IP Address" width="150px" required="true" default="192.168.1.200" />
         <param field="Port" label="Port" width="150px" required="true" default="80" />
-        <param field="Mode1" label="Refresh Interval Scenes" width="150px">
+        <param field="Mode1" label="Scene refresh interval" width="150px">
             <options>
                 <option label="30s" value="30"/>
                 <option label="30m" value="1800"/>
@@ -62,8 +52,8 @@
             </options>
         </param>
         <param field="Mode5" label="P1 addresses" width="300px" default="">
-        <description><br/>Fill in the P1 devicenumbers separated by ;  (2.1;2.4;2.6;2.5;2.7)
-                     <br/><span style="color: yellow;">Leave empty for auto detection</span></description>
+        <description><br/>Enter five P1 device addresses separated by semicolons (for example: 2.1;2.4;2.6;2.5;2.7).
+                     <br/><span style="color: yellow;">Leave empty for automatic detection.</span></description>
         </param>
         <param field="Mode6" label="Debug logging" width="150px">
             <options>
