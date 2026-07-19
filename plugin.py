@@ -1,8 +1,8 @@
 """
-<plugin key="RootedToonPlug" name="Toon Rooted" author="MadPatrick" version="2.8.4" externallink="https://github.com/MadPatrick/domoticz_toon">
+<plugin key="RootedToonPlug" name="Toon Rooted" author="MadPatrick" version="2.8.5" externallink="https://github.com/MadPatrick/domoticz_toon">
       <description>
           <h2>Toon Rooted</h2>
-          <p><strong>Version:</strong> 2.8.4</p>
+          <p><strong>Version:</strong> 2.8.5</p>
           <p>Connects Domoticz to a rooted Toon thermostat through its local API.</p>
           <h3>Features</h3>
           <ul>
@@ -276,14 +276,29 @@ class BasePlugin:
         }
 
         for pack_name, attr_name in icon_packs.items():
-            creating_new_icon = pack_name not in Images
+            existing_image = next(
+                (image for name, image in Images.items()
+                 if str(name).casefold() == pack_name.casefold()),
+                None,
+            )
+            if existing_image is not None:
+                setattr(self, attr_name, existing_image.ID)
+                Domoticz.Log(
+                    f"Icons found in database (ImageID={existing_image.ID})."
+                )
+                continue
+
             try:
                 Domoticz.Image(f"{pack_name}.zip").Create()
-                if pack_name in Images:
-                    setattr(self, attr_name, Images[pack_name].ID)
+                created_image = next(
+                    (image for name, image in Images.items()
+                     if str(name).casefold() == pack_name.casefold()),
+                    None,
+                )
+                if created_image is not None:
+                    setattr(self, attr_name, created_image.ID)
                     imageID = getattr(self, attr_name)
-                    Domoticz.Log("Icons created and loaded." if creating_new_icon else
-                                 f"Icons found in database (ImageID={imageID}).")
+                    Domoticz.Log("Icons created and loaded.")
                 else:
                     Domoticz.Error(f"Unable to load icon pack '{pack_name}.zip'")
             except Exception as e:
