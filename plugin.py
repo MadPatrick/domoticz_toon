@@ -1,8 +1,8 @@
 """
-<plugin key="RootedToonPlug" name="Toon Rooted" author="MadPatrick" version="2.8.6" externallink="https://github.com/MadPatrick/domoticz_toon">
+<plugin key="RootedToonPlug" name="Toon Rooted" author="MadPatrick" version="2.8.7" externallink="https://github.com/MadPatrick/domoticz_toon">
       <description>
           <h2>Toon Rooted</h2>
-          <p><strong>Version:</strong> 2.8.6</p>
+          <p><strong>Version:</strong> 2.8.7</p>
           <p>Connects Domoticz to a rooted Toon thermostat through its local API.</p>
           <h3>Features</h3>
           <ul>
@@ -70,6 +70,8 @@ import requests
 import json
 import math
 import os
+import threading
+import queue
 from datetime import datetime
 from time import time
 
@@ -121,6 +123,18 @@ class BasePlugin:
         self.expectedDowntimeLogged = False
         self.useSummerMode = False
         self.session = requests.Session()
+
+        # Heartbeat fetch cycles run on a background thread so a slow/unreachable
+        # Toon never blocks Domoticz's single callback thread. The worker thread
+        # only calls fetchJson() (which itself never touches Devices); parsing
+        # and all Devices[...] updates happen in onHeartbeat, on the main thread.
+        self._fetch_lock = threading.Lock()
+        self._fetch_in_progress = False
+        self._result_queue = queue.Queue()
+        # Set by updateSceneFromSetpoint()/summer-mode-off instead of blocking
+        # immediately; consumed by the next heartbeat fetch cycle.
+        self._pending_scheme_state = None
+        self._scenes_refresh_pending = False
 
     # --- Config laden ---
     def loadConfig(self):
@@ -448,70 +462,187 @@ class BasePlugin:
             return False
 
     def onHeartbeat(self):
+        # Process any fetch cycle(s) the background worker finished since the
+        # last tick - this is the main/callback thread, so it's safe here to
+        # touch Devices[...] via the update*/UpdateDevice calls inside.
+        while True:
+            try:
+                result = self._result_queue.get_nowait()
+            except queue.Empty:
+                break
+            self._processFetchResult(result)
+
         # --- Cooldown check ---
         if self.lastErrorTime and self.errorCooldown > 0:
             elapsed = time() - self.lastErrorTime
             if elapsed < self.errorCooldown:
                 Domoticz.Debug(f"Cooldown mode({int(self.errorCooldown - elapsed)}s remaining), heartbeat skipped.")
                 return
-            else:
-                Domoticz.Log("Cooldown ended, connection tested...")
-                self.errorCooldown = 0
-                self.lastErrorTime = None
+            Domoticz.Log("Cooldown ended, connection tested...")
+            self.errorCooldown = 0
+            self.lastErrorTime = None
+            mode = "cooldown_test"
+        else:
+            mode = "normal"
 
+        # Anything deferred by updateSceneFromSetpoint()/summer-mode-off since
+        # the previous cycle is picked up by this one instead of blocking here.
+        pending_scheme_state = self._pending_scheme_state
+        self._pending_scheme_state = None
+        scenes_refresh_needed = self._scenes_refresh_pending
+        self._scenes_refresh_pending = False
+
+        self.sceneCounter += self.heartbeat_interval
+        want_scenes = (not self.isSummerModeActive()) and (
+            scenes_refresh_needed or self.sceneCounter >= self.scene_interval
+        )
+        if want_scenes:
+            self.sceneCounter = 0
+
+        self._triggerFetchCycle(mode, self.useZwave, self.useSummerMode, want_scenes, pending_scheme_state)
+
+    def _triggerFetchCycle(self, mode, want_zwave, want_summer, want_scenes, pending_scheme_state):
+        """Starts the background worker for one heartbeat fetch cycle. Runs on
+        the main thread; only starts a thread and returns immediately."""
+        with self._fetch_lock:
+            if self._fetch_in_progress:
+                Domoticz.Debug("Fetch cycle already in progress, skipping this heartbeat trigger.")
+                return
+            self._fetch_in_progress = True
+
+        threading.Thread(
+            target=self._fetchWorker,
+            args=(mode, want_zwave, want_summer, want_scenes, pending_scheme_state),
+            daemon=True
+        ).start()
+
+    def _fetchWorker(self, mode, want_zwave, want_summer, want_scenes, pending_scheme_state):
+        """Runs on a background thread. Does ONLY fetchJson() calls (which
+        themselves never touch Devices) for this cycle and hands the raw
+        results back through self._result_queue - it must never touch
+        Devices[...] or call UpdateDevice(), that happens in
+        _processFetchResult() on the main thread instead."""
+        result = {"mode": mode, "want_scenes": want_scenes}
+        try:
+            if pending_scheme_state is not None:
+                self.fetchJson(
+                    f"/happ_thermstat?action=changeSchemeState&state=2&temperatureState={pending_scheme_state}",
+                    critical=False
+                )
+
+            if mode == "cooldown_test":
                 test = self.fetchJson("/happ_thermstat?action=getThermostatInfo")
-                if test is None:
-                    Domoticz.Error("No connection after cooldown. Check the device.")
-                    return
-                else:
-                    Domoticz.Log("Connection restored after cooldown.")
-                    self.updateThermostatDevices(test)
-                    # results=None: boiler/Z-Wave fouten worden hier bewust niet bijgehouden.
-                    # Na een cooldown willen we niet dat een optionele fout de verbindingsstatus
-                    # beinvloedt of expectedDowntimeLogged reset. Een lege lijst zou all([]) = True
-                    # geven, maar dan ook zonder dat boiler/Z-Wave gecontroleerd zijn.
-                    self._doBoilerAndZwave(results=None)
-                    if self.useSummerMode:
-                        self.readSummerMode()
-                    self.sceneCounter += self.heartbeat_interval
-                    if self.sceneCounter >= self.scene_interval:
-                        self.fetchScenes(thermostat_data=test)
-                        self.sceneCounter = 0
-                    return
+                result["thermostat"] = test
+                if test is not None:
+                    result["boiler"] = self.fetchJson("/boilerstatus/boilervalues.txt", critical=False)
+                    if want_zwave:
+                        result["zwave"] = self.fetchJson("/hdrv_zwave?action=getDevices.json", critical=False)
+                    if want_summer:
+                        result["summer"] = self.fetchJson("/tsc/tscSettings.userSettings.json", critical=False)
+                    if want_scenes:
+                        result["scenes_config"] = self.fetchJson(
+                            "/hcb_config?action=getObjectConfigTree&package=happ_thermstat&internalAddress=thermostatStates",
+                            critical=False
+                        )
+                        result["scenes_thermostat"] = test
+            else:
+                thermostat_data = self.fetchJson("/happ_thermstat?action=getThermostatInfo")
+                result["thermostat"] = thermostat_data
+                result["thermostat_ok"] = thermostat_data is not None
+
+                boiler_data = self.fetchJson("/boilerstatus/boilervalues.txt", critical=False)
+                result["boiler"] = boiler_data
+                result["boiler_ok"] = boiler_data is not None
+
+                if want_zwave:
+                    zw = self.fetchJson("/hdrv_zwave?action=getDevices.json", critical=False)
+                    result["zwave"] = zw
+                    result["zwave_ok"] = zw is not None
+
+                if want_summer:
+                    result["summer"] = self.fetchJson("/tsc/tscSettings.userSettings.json", critical=False)
+
+                if want_scenes:
+                    result["scenes_config"] = self.fetchJson(
+                        "/hcb_config?action=getObjectConfigTree&package=happ_thermstat&internalAddress=thermostatStates",
+                        critical=False
+                    )
+                    result["scenes_thermostat"] = (
+                        thermostat_data if thermostat_data is not None
+                        else self.fetchJson("/happ_thermstat?action=getThermostatInfo")
+                    )
+        finally:
+            self._result_queue.put(result)
+            with self._fetch_lock:
+                self._fetch_in_progress = False
+
+    def _processFetchResult(self, result):
+        """Processes one completed fetch cycle's raw data: all Devices[...]
+        reads/writes happen here, on the main thread. Mirrors the exact
+        sequencing the old synchronous onHeartbeat used."""
+        if result["mode"] == "cooldown_test":
+            test = result.get("thermostat")
+            if test is None:
+                Domoticz.Error("No connection after cooldown. Check the device.")
+                return
+            Domoticz.Log("Connection restored after cooldown.")
+            self.updateThermostatDevices(test)
+            # boiler/Z-Wave fouten worden hier bewust niet bijgehouden (zie
+            # oorspronkelijke logica): na een cooldown willen we niet dat een
+            # optionele fout de verbindingsstatus beinvloedt of
+            # expectedDowntimeLogged reset.
+            boiler_data = result.get("boiler")
+            if boiler_data:
+                self.updateBoilerDevices(boiler_data)
+            if self.useZwave:
+                zw = result.get("zwave")
+                if zw:
+                    self.updateZwaveDevices(zw)
+            if self.useSummerMode:
+                self._processSummerModeResult(result.get("summer"))
+            if result.get("want_scenes"):
+                self._processScenesResult(result.get("scenes_config"), result.get("scenes_thermostat"))
+            return
 
         results = []
-        thermostat_data = self.fetchJson("/happ_thermstat?action=getThermostatInfo")
-        results.append(thermostat_data is not None)
+        thermostat_data = result.get("thermostat")
+        results.append(result.get("thermostat_ok", False))
         if thermostat_data:
             self.updateThermostatDevices(thermostat_data)
 
-        self._doBoilerAndZwave(results)
+        boiler_data = result.get("boiler")
+        results.append(result.get("boiler_ok", False))
+        if boiler_data:
+            self.updateBoilerDevices(boiler_data)
+
+        if self.useZwave:
+            zw = result.get("zwave")
+            results.append(result.get("zwave_ok", False))
+            if zw:
+                self.updateZwaveDevices(zw)
+
         if self.useSummerMode:
-            self.readSummerMode()
+            self._processSummerModeResult(result.get("summer"))
 
         if all(results) and self.expectedDowntimeLogged:
             Domoticz.Log("Connection restored after expected restart.")
             self.expectedDowntimeLogged = False
 
-        self.sceneCounter += self.heartbeat_interval
-        if self.sceneCounter >= self.scene_interval:
-            self.fetchScenes(thermostat_data=thermostat_data)
-            self.sceneCounter = 0
+        if result.get("want_scenes"):
+            self._processScenesResult(result.get("scenes_config"), result.get("scenes_thermostat"))
 
-    def _doBoilerAndZwave(self, results=None):
-        """Retrieve boiler and Z-Wave data and process it. Optionally keep a results list."""
-        boiler_data = self.fetchJson("/boilerstatus/boilervalues.txt", critical=False)
-        if results is not None:
-            results.append(boiler_data is not None)
-        if boiler_data:
-            self.updateBoilerDevices(boiler_data)
-
-        if self.useZwave:
-            zw = self.fetchJson("/hdrv_zwave?action=getDevices.json", critical=False)
-            if results is not None:
-                results.append(zw is not None)
-            if zw:
-                self.updateZwaveDevices(zw)
+    def _processSummerModeResult(self, data):
+        if data is None or 'summerMode' not in data:
+            return
+        toon_summer_on = bool(data['summerMode'])
+        if summerMode in Devices:
+            if Devices[summerMode].nValue != (1 if toon_summer_on else 0):
+                Domoticz.Log(f"Summer mode changed: {'Aan' if toon_summer_on else 'Uit'}")
+                UpdateDevice(summerMode, 1 if toon_summer_on else 0, "On" if toon_summer_on else "Off")
+                if not toon_summer_on:
+                    # Originally triggered an immediate fetchScenes() call here;
+                    # deferred to the next heartbeat cycle instead of blocking.
+                    self._scenes_refresh_pending = True
 
     # --- Fetch functies ---
     def fetchJson(self, path, critical=True):
@@ -545,14 +676,24 @@ class BasePlugin:
 
     # --- Scenes ophalen ---
     def fetchScenes(self, thermostat_data=None):
+        """Blocking - used only from onStart() for the one-time initial scene
+        sync. The recurring heartbeat path uses _processScenesResult() with
+        data already fetched on the background worker instead."""
         if self.isSummerModeActive():
             Domoticz.Debug("Summer mode active, automatic scene refresh skipped.")
             return
 
-        old_scene_map = self.scene_map.copy()
-
         # critical=False gezet om onnodige cooldowns bij config-tree fouten te voorkomen
         data = self.fetchJson("/hcb_config?action=getObjectConfigTree&package=happ_thermstat&internalAddress=thermostatStates", critical=False)
+        if thermostat_data is None:
+            thermostat_data = self.fetchJson("/happ_thermstat?action=getThermostatInfo")
+        self._processScenesResult(data, thermostat_data)
+
+    def _processScenesResult(self, data, thermostat_data):
+        """Devices[...]-touching part of a scene refresh, given already-fetched
+        data. Safe to call from the main thread only."""
+        old_scene_map = self.scene_map.copy()
+
         if data and 'states' in data and len(data['states']) > 0:
             state_list = data['states'][0]['state']
             self.scene_map = {}
@@ -567,9 +708,6 @@ class BasePlugin:
                 for scene_id, temp in sorted(self.scene_map.items()):
                     scene_name = {10: "Weg", 20: "Slapen", 30: "Thuis", 40: "Comfort", 50: "Manual"}.get(int(scene_id), str(scene_id))
                     Domoticz.Log(f"  {scene_name}: {temp:.1f}\u00B0C")
-
-        if thermostat_data is None:
-            thermostat_data = self.fetchJson("/happ_thermstat?action=getThermostatInfo")
 
         if thermostat_data and 'activeState' in thermostat_data:
             toon_scene = self.idToScene(int(thermostat_data['activeState']))
@@ -597,7 +735,10 @@ class BasePlugin:
             state_map = {10: 3, 20: 2, 30: 1, 40: 0}
             newState = state_map.get(matched_scene_id, None)
             if newState is not None:
-                self.fetchJson(f"/happ_thermstat?action=changeSchemeState&state=2&temperatureState={newState}", critical=False)
+                # Originally pushed this to Toon immediately via a blocking
+                # fetchJson() call; deferred to the next heartbeat fetch cycle
+                # instead so this method (called from onCommand too) never blocks.
+                self._pending_scheme_state = newState
         elif matched_scene_id is None and current_scene_val != 50:
             UpdateDevice(scene, 0, "50")
 
@@ -667,18 +808,6 @@ class BasePlugin:
 
         except Exception as e:
             Domoticz.Error(f"Error processing boiler data: {e}")
-
-    def readSummerMode(self):
-        data = self.fetchJson("/tsc/tscSettings.userSettings.json", critical=False)
-        if data is None or 'summerMode' not in data:
-            return
-        toon_summer_on = bool(data['summerMode'])
-        if summerMode in Devices:
-            if Devices[summerMode].nValue != (1 if toon_summer_on else 0):
-                Domoticz.Log(f"Summer mode changed: {'Aan' if toon_summer_on else 'Uit'}")
-                UpdateDevice(summerMode, 1 if toon_summer_on else 0, "On" if toon_summer_on else "Off")
-                if not toon_summer_on:
-                    self.fetchScenes()
 
     def updateZwaveDevices(self, Response):
         try:
