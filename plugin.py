@@ -1,8 +1,8 @@
 """
-<plugin key="RootedToonPlug" name="Toon Rooted" author="MadPatrick" version="2.8.5" externallink="https://github.com/MadPatrick/domoticz_toon">
+<plugin key="RootedToonPlug" name="Toon Rooted" author="MadPatrick" version="2.8.6" externallink="https://github.com/MadPatrick/domoticz_toon">
       <description>
           <h2>Toon Rooted</h2>
-          <p><strong>Version:</strong> 2.8.5</p>
+          <p><strong>Version:</strong> 2.8.6</p>
           <p>Connects Domoticz to a rooted Toon thermostat through its local API.</p>
           <h3>Features</h3>
           <ul>
@@ -78,6 +78,8 @@ programStates = ['10','20','30','40']  # index 3 = vacation mode = "Vakantie"
 burnerInfos = ['10','20','30']
 strPrograms = ['Weg', 'Slapen', 'Thuis', 'Comfort','Manual']
 OPTIONAL_ERROR_LOG_INTERVAL = 1800  # Log optional errors at most once every 30 minutes
+MIN_SETPOINT = 5.0  # Sane lower bound (°C) for a manually entered thermostat setpoint
+MAX_SETPOINT = 30.0  # Sane upper bound (°C) for a manually entered thermostat setpoint
 
 # Device unit numbers
 curTemp = 1
@@ -359,12 +361,13 @@ class BasePlugin:
     def onCommand(self, Unit, Command, Level, Hue):
         Domoticz.Debug(f"onCommand Unit {Unit} Command {Command} Level {Level}")
         if Unit == setTemp:
-            setpoint = int(round(Level * 100))
+            clampedLevel = min(max(Level, MIN_SETPOINT), MAX_SETPOINT)
+            setpoint = int(round(clampedLevel * 100))
             # Alleen updaten in Domoticz als de Toon API akkoord geeft
             if self.fetchJson(f"/happ_thermstat?action=setSetpoint&Setpoint={setpoint}") is not None:
-                UpdateDevice(setTemp, 0, str(Level))
+                UpdateDevice(setTemp, 0, str(clampedLevel))
                 if not self.isSummerModeActive():
-                    self.updateSceneFromSetpoint(Level)
+                    self.updateSceneFromSetpoint(clampedLevel)
         elif Unit == scene:
             scene_level = int(Level)
             temp = self.scene_map.get(str(scene_level), None)
@@ -376,6 +379,11 @@ class BasePlugin:
             if newState is not None:
                 if self.fetchJson(f"/happ_thermstat?action=changeSchemeState&state=2&temperatureState={newState}") is not None:
                     UpdateDevice(scene, 0, str(scene_level))
+            else:
+                # "Manual" (or any scene without a mapped Toon state) doesn't call the Toon
+                # API, but the selector's new value still needs to be confirmed/persisted
+                # in Domoticz so the UI reflects the user's selection.
+                UpdateDevice(scene, 0, str(scene_level))
         elif Unit == autoProgram:
             prog_level = int(Level)
             prog_state_map = {10: 0, 20: 1, 30: 2, 40: 3}
@@ -594,31 +602,34 @@ class BasePlugin:
             UpdateDevice(scene, 0, "50")
 
     def updateThermostatDevices(self, Response):
-        if 'currentTemp' in Response:
-            UpdateDevice(curTemp, 0, "%.1f" % (float(Response['currentTemp']) / 100))
-        if 'currentSetpoint' in Response:
-            setpoint = float(Response['currentSetpoint']) / 100
-            UpdateDevice(setTemp, 0, "%.1f" % setpoint)
+        try:
+            if 'currentTemp' in Response:
+                UpdateDevice(curTemp, 0, "%.1f" % (float(Response['currentTemp']) / 100))
+            if 'currentSetpoint' in Response:
+                setpoint = float(Response['currentSetpoint']) / 100
+                UpdateDevice(setTemp, 0, "%.1f" % setpoint)
 
-            if not self.isSummerModeActive():
-                if 'activeState' in Response:
-                    toon_scene = self.idToScene(int(Response['activeState']))
-                    current_scene_val = SafeInt(Devices[scene].sValue) if scene in Devices else None
-                    if current_scene_val != toon_scene:
-                        UpdateDevice(scene, 0, str(toon_scene))
+                if not self.isSummerModeActive():
+                    if 'activeState' in Response:
+                        toon_scene = self.idToScene(int(Response['activeState']))
+                        current_scene_val = SafeInt(Devices[scene].sValue) if scene in Devices else None
+                        if current_scene_val != toon_scene:
+                            UpdateDevice(scene, 0, str(toon_scene))
+                    else:
+                        self.updateSceneFromSetpoint(setpoint)
                 else:
-                    self.updateSceneFromSetpoint(setpoint)
-            else:
-                Domoticz.Debug("Summer mode active, automatic scene sync from thermostat data skipped.")
-            self.updateProgramInfo(Response)
-        if 'programState' in Response:
-            prog_idx = int(Response['programState'])
-            if 0 <= prog_idx < len(programStates):
-                UpdateDevice(autoProgram, 0, programStates[prog_idx])
-        if 'burnerInfo' in Response:
-            burner_idx = int(Response['burnerInfo'])
-            if 0 <= burner_idx < len(burnerInfos):
-                UpdateDevice(boilerState, 0, burnerInfos[burner_idx])
+                    Domoticz.Debug("Summer mode active, automatic scene sync from thermostat data skipped.")
+                self.updateProgramInfo(Response)
+            if 'programState' in Response:
+                prog_idx = int(Response['programState'])
+                if 0 <= prog_idx < len(programStates):
+                    UpdateDevice(autoProgram, 0, programStates[prog_idx])
+            if 'burnerInfo' in Response:
+                burner_idx = int(Response['burnerInfo'])
+                if 0 <= burner_idx < len(burnerInfos):
+                    UpdateDevice(boilerState, 0, burnerInfos[burner_idx])
+        except Exception as e:
+            Domoticz.Error(f"Error processing thermostat data: {e}")
 
     def updateProgramInfo(self, Response):
         if all(k in Response for k in ("nextProgram","nextSetpoint","nextTime","nextState")):
@@ -670,43 +681,43 @@ class BasePlugin:
                     self.fetchScenes()
 
     def updateZwaveDevices(self, Response):
-        def safe_float(value, fallback=0.0):
-            try:
-                result = float(value)
-                return fallback if math.isnan(result) else result
-            except (ValueError, TypeError):
-                return fallback
-
-        zwaveDeliveredNtFlow = 0.0
-        zwaveDeliveredLtFlow = 0.0
-        zwaveDeliveredNtQ = 0.0
-        zwaveDeliveredLtQ = 0.0
-        zwaveReceivedNtFlow = 0.0
-        zwaveReceivedLtFlow = 0.0
-        zwaveReceivedNtQ = 0.0
-        zwaveReceivedLtQ = 0.0
-
-        for info in Response.values():
-            if 'internalAddress' not in info:
-                continue
-            ia = info['internalAddress']
-            if ia == self.ia_gas:
-                gas_val = safe_float(info.get('CurrentGasQuantity', 0))
-                UpdateDevice(Unit=gas, nValue=0, sValue=str(int(gas_val)))
-            elif ia == self.ia_ednt:
-                zwaveDeliveredNtFlow = safe_float(info.get('CurrentElectricityFlow', 0))
-                zwaveDeliveredNtQ    = safe_float(info.get('CurrentElectricityQuantity', 0))
-            elif ia == self.ia_edlt:
-                zwaveDeliveredLtFlow = safe_float(info.get('CurrentElectricityFlow', 0))
-                zwaveDeliveredLtQ    = safe_float(info.get('CurrentElectricityQuantity', 0))
-            elif ia == self.ia_ernt:
-                zwaveReceivedNtFlow = safe_float(info.get('CurrentElectricityFlow', 0))
-                zwaveReceivedNtQ    = safe_float(info.get('CurrentElectricityQuantity', 0))
-            elif ia == self.ia_erlt:
-                zwaveReceivedLtFlow = safe_float(info.get('CurrentElectricityFlow', 0))
-                zwaveReceivedLtQ    = safe_float(info.get('CurrentElectricityQuantity', 0))
-
         try:
+            def safe_float(value, fallback=0.0):
+                try:
+                    result = float(value)
+                    return fallback if math.isnan(result) else result
+                except (ValueError, TypeError):
+                    return fallback
+
+            zwaveDeliveredNtFlow = 0.0
+            zwaveDeliveredLtFlow = 0.0
+            zwaveDeliveredNtQ = 0.0
+            zwaveDeliveredLtQ = 0.0
+            zwaveReceivedNtFlow = 0.0
+            zwaveReceivedLtFlow = 0.0
+            zwaveReceivedNtQ = 0.0
+            zwaveReceivedLtQ = 0.0
+
+            for info in Response.values():
+                if 'internalAddress' not in info:
+                    continue
+                ia = info['internalAddress']
+                if ia == self.ia_gas:
+                    gas_val = safe_float(info.get('CurrentGasQuantity', 0))
+                    UpdateDevice(Unit=gas, nValue=0, sValue=str(int(gas_val)))
+                elif ia == self.ia_ednt:
+                    zwaveDeliveredNtFlow = safe_float(info.get('CurrentElectricityFlow', 0))
+                    zwaveDeliveredNtQ    = safe_float(info.get('CurrentElectricityQuantity', 0))
+                elif ia == self.ia_edlt:
+                    zwaveDeliveredLtFlow = safe_float(info.get('CurrentElectricityFlow', 0))
+                    zwaveDeliveredLtQ    = safe_float(info.get('CurrentElectricityQuantity', 0))
+                elif ia == self.ia_ernt:
+                    zwaveReceivedNtFlow = safe_float(info.get('CurrentElectricityFlow', 0))
+                    zwaveReceivedNtQ    = safe_float(info.get('CurrentElectricityQuantity', 0))
+                elif ia == self.ia_erlt:
+                    zwaveReceivedLtFlow = safe_float(info.get('CurrentElectricityFlow', 0))
+                    zwaveReceivedLtQ    = safe_float(info.get('CurrentElectricityQuantity', 0))
+
             zwaveDeliveredFlow = int(zwaveDeliveredNtFlow + zwaveDeliveredLtFlow)
             zwaveDeliveredQ    = int(zwaveDeliveredNtQ + zwaveDeliveredLtQ)
             UpdateDevice(Unit=electricity, nValue=0, sValue=f"{zwaveDeliveredFlow};{zwaveDeliveredQ}")
@@ -721,7 +732,7 @@ class BasePlugin:
                 zwaveDeliveredFlow, zwaveReceivedFlow
             ))
         except Exception as e:
-            Domoticz.Log(f"Error processing P1 values: {e}")
+            Domoticz.Error(f"Error processing Z-Wave data: {e}")
 
     def _dumpConfigToLog(self):
         Domoticz.Debug("Parameters:")
