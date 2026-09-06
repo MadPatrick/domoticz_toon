@@ -1,8 +1,8 @@
 """
-<plugin key="RootedToonPlug" name="Toon Rooted" author="MadPatrick" version="2.8.7" externallink="https://github.com/MadPatrick/domoticz_toon">
+<plugin key="RootedToonPlug" name="Toon Rooted" author="MadPatrick" version="2.9.0" externallink="https://github.com/MadPatrick/domoticz_toon">
       <description>
           <h2>Toon Rooted</h2>
-          <p><strong>Version:</strong> 2.8.7</p>
+          <p><strong>Version:</strong> 2.9.0</p>
           <p>Connects Domoticz to a rooted Toon thermostat through its local API.</p>
           <h3>Features</h3>
           <ul>
@@ -16,9 +16,16 @@
           <p>Enter the rooted Toon address and select its version. Leave P1 addresses empty for automatic detection.</p>
       </description>
       <params>
-        <param field="Address" label="IP Address" width="150px" required="true" default="192.168.1.200" />
+        <param field="Address" label="IP Address" width="150px" required="true" default="192.168.1.200">
+            <description>
+                <h4 style="margin:4px 0 6px 0;">Connection</h4>
+            </description>
+        </param>
         <param field="Port" label="Port" width="150px" required="true" default="80" />
-        <param field="Mode1" label="Scene refresh interval" width="150px">
+        <param field="SceneRefreshInterval" label="Scene refresh interval" width="150px">
+            <description>
+                <h4 style="margin:14px 0 6px 0; border-top:1px solid #ccc; padding-top:8px;">Polling</h4>
+            </description>
             <options>
                 <option label="30s" value="30"/>
                 <option label="30m" value="1800"/>
@@ -27,7 +34,7 @@
                 <option label="6hr" value="21600"/>
             </options>
         </param>
-        <param field="Mode2" label="Refresh interval" width="150px">
+        <param field="RefreshInterval" label="Refresh interval" width="150px">
             <options>
                 <option label="10s" value="10"/>
                 <option label="20s" value="20"/>
@@ -38,28 +45,30 @@
                 <option label="15m" value="900"/>
             </options>
         </param>
-        <param field="Mode3" label="P1 data" width="150px">
+        <param field="EnableP1Data" label="P1 data" width="150px">
+            <description>
+                <h4 style="margin:14px 0 6px 0; border-top:1px solid #ccc; padding-top:8px;">P1 / Z-Wave</h4>
+            </description>
             <options>
                 <option label="Yes" value="Yes"/>
                 <option label="No" value="No" default="true"/>
             </options>
         </param>
-        <param field="Mode4" label="Toon version" width="150px" required="true">
+        <param field="ToonVersion" label="Toon version" width="150px" required="true">
             <options>
                 <option label="v1" value="v1"/>
                 <option label="v2" value="v2" default="true" />
                 <option label="user defined" value="user"/>
             </options>
         </param>
-        <param field="Mode5" label="P1 addresses" width="300px" default="">
+        <param field="P1Addresses" label="P1 addresses" width="300px" default="">
         <description><br/>Enter five P1 device addresses separated by semicolons (for example: 2.1;2.4;2.6;2.5;2.7).
                      <br/><span style="color: yellow;">Leave empty for automatic detection.</span></description>
         </param>
-        <param field="Mode6" label="Debug logging" width="150px">
-            <options>
-                <option label="On" value="Debug"/>
-                <option label="Off" value="Normal" default="true"/>
-            </options>
+        <param field="EnableDebug" type="boolean" label="Debug" default="false">
+            <description>
+                <h4 style="margin:14px 0 6px 0; border-top:1px solid #ccc; padding-top:8px;">Logging</h4>
+            </description>
         </param>
     </params>
 </plugin>
@@ -136,6 +145,25 @@ class BasePlugin:
         self._pending_scheme_state = None
         self._scenes_refresh_pending = False
 
+    def _read_migrated_parameter(self, field, legacy_field, default=""):
+        """Read a named setting, falling back to its former ModeX field.
+
+        Empty defaults on the new settings make existing Domoticz hardware
+        configurations continue to work until they are saved with the new
+        field names.
+        """
+        raw = Parameters.get(field, "")
+        if raw is None or str(raw).strip() == "":
+            raw = Parameters.get(legacy_field, "")
+        if raw is None or str(raw).strip() == "":
+            return default
+        return raw
+
+    def _read_migrated_boolean_parameter(self, field, legacy_field, default=False, extra_truthy=()):
+        raw = self._read_migrated_parameter(field, legacy_field, "true" if default else "false")
+        truthy = {"true", "1", "yes", "on"} | {v.lower() for v in extra_truthy}
+        return str(raw).strip().lower() in truthy
+
     # --- Config laden ---
     def loadConfig(self):
         config_path = os.path.join(Parameters["HomeFolder"], "config.txt")
@@ -203,14 +231,15 @@ class BasePlugin:
         paramList = []
         detected_version = None
 
-        if Parameters["Mode5"]:
-            paramList = Parameters["Mode5"].split(";")
+        p1_addresses = str(self._read_migrated_parameter("P1Addresses", "Mode5", ""))
+        if p1_addresses:
+            paramList = p1_addresses.split(";")
             if len(paramList) == 5:
                 self.ia_gas, self.ia_ednt, self.ia_edlt, self.ia_ernt, self.ia_erlt = paramList
                 detected_version = "Usermode"
                 Domoticz.Log(f"Manual P1-addresses used: {paramList}")
             else:
-                Domoticz.Log("Mode5 set, but wrong number of addresses (5 expected)")
+                Domoticz.Log("P1Addresses set, but wrong number of addresses (5 expected)")
                 paramList = []
 
         if not paramList:
@@ -231,12 +260,13 @@ class BasePlugin:
                     if valid_addresses:
                         prefixes = set(addr.split(".")[0] if "." in addr else addr for addr in valid_addresses)
                         detected_prefix = max(prefixes, key=lambda p: sum(1 for a in valid_addresses if a.startswith(p + ".")))
-                        suffixes = ["1","3","5","4","6"] if Parameters["Mode4"] == "v1" else ["1","4","6","5","7"]
+                        toon_version = str(self._read_migrated_parameter("ToonVersion", "Mode4", "v2"))
+                        suffixes = ["1","3","5","4","6"] if toon_version == "v1" else ["1","4","6","5","7"]
                         paramList = [f"{detected_prefix}.{s}" for s in suffixes]
 
                         if len(paramList) == 5:
                             self.ia_gas, self.ia_ednt, self.ia_edlt, self.ia_ernt, self.ia_erlt = paramList
-                            detected_version = f"{Parameters['Mode4']} ({detected_prefix}.x)"
+                            detected_version = f"{toon_version} ({detected_prefix}.x)"
                     else:
                         Domoticz.Log("WARNING: No valid meter addresses detected in Z-Wave response.")
             except Exception as e:
@@ -269,16 +299,16 @@ class BasePlugin:
     def onStart(self):
         Domoticz.Log(f"Starting Plugin")
 
-        self.heartbeat_interval = int(Parameters['Mode2'])
-        self.scene_interval = int(Parameters['Mode1'])
+        self.heartbeat_interval = int(self._read_migrated_parameter("RefreshInterval", "Mode2", "60"))
+        self.scene_interval = int(self._read_migrated_parameter("SceneRefreshInterval", "Mode1", "3600"))
 
         self.loadConfig()
 
-        if Parameters["Mode3"] == "Yes":
+        if str(self._read_migrated_parameter("EnableP1Data", "Mode3", "No")) == "Yes":
             self.useZwave = True
             Domoticz.Log("P1-data Collection Enabled")
 
-        if Parameters["Mode6"] == "Debug":
+        if self._read_migrated_boolean_parameter("EnableDebug", "Mode6", False, extra_truthy=("Debug",)):
             Domoticz.Debugging(1)
             Domoticz.Log("Debug logging enabled")
             self._dumpConfigToLog()
