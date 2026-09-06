@@ -316,15 +316,23 @@ class BasePlugin:
             Domoticz.Debugging(0)
 
         # --- Icon Packs ---
+        # Each zip file on disk keeps its historical short name, but the
+        # icon's Base (in icons.txt, used as the Images dict key) must start
+        # with this plugin's key ("RootedToonPlug") - Domoticz only loads a
+        # plugin's pre-existing custom icons into Images at startup when
+        # Base LIKE '<PluginKey>%'. The short "Toon"/"Toon_inv" Bases used
+        # before didn't satisfy that, so Images never contained them on
+        # restart and they were silently recreated (and re-logged as
+        # "created") every single time instead of found.
         icon_packs = {
-            "Toon": "imageID",
-            "Toon_inv": "imageInvID"
+            "Toon": ("imageID", "RootedToonPlug"),
+            "Toon_inv": ("imageInvID", "RootedToonPlugInv"),
         }
 
-        for pack_name, attr_name in icon_packs.items():
+        for zip_stem, (attr_name, base_name) in icon_packs.items():
             existing_image = next(
                 (image for name, image in Images.items()
-                 if str(name).casefold() == pack_name.casefold()),
+                 if str(name).casefold() == base_name.casefold()),
                 None,
             )
             if existing_image is not None:
@@ -335,10 +343,10 @@ class BasePlugin:
                 continue
 
             try:
-                Domoticz.Image(f"{pack_name}.zip").Create()
+                Domoticz.Image(f"{zip_stem}.zip").Create()
                 created_image = next(
                     (image for name, image in Images.items()
-                     if str(name).casefold() == pack_name.casefold()),
+                     if str(name).casefold() == base_name.casefold()),
                     None,
                 )
                 if created_image is not None:
@@ -346,9 +354,9 @@ class BasePlugin:
                     imageID = getattr(self, attr_name)
                     Domoticz.Log("Icons created and loaded.")
                 else:
-                    Domoticz.Error(f"Unable to load icon pack '{pack_name}.zip'")
+                    Domoticz.Error(f"Unable to load icon pack '{zip_stem}.zip'")
             except Exception as e:
-                Domoticz.Error(f"Error loading icon pack '{pack_name}': {e}")
+                Domoticz.Error(f"Error loading icon pack '{zip_stem}': {e}")
 
         devices_to_create = [
             {"unit": curTemp, "name": "Temperatuur", "typeName": "Temperature", "image": self.imageID},
