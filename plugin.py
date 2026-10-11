@@ -76,7 +76,6 @@
 
 import Domoticz
 import requests
-import json
 import math
 import os
 import threading
@@ -351,7 +350,6 @@ class BasePlugin:
                 )
                 if created_image is not None:
                     setattr(self, attr_name, created_image.ID)
-                    imageID = getattr(self, attr_name)
                     Domoticz.Log("Icons created and loaded.")
                 else:
                     Domoticz.Error(f"Unable to load icon pack '{zip_stem}.zip'")
