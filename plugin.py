@@ -1,8 +1,8 @@
 """
-<plugin key="RootedToonPlug" name="Toon Rooted" author="MadPatrick" version="2.9.1" externallink="https://github.com/MadPatrick/domoticz_toon">
+<plugin key="RootedToonPlug" name="Toon Rooted" author="MadPatrick" version="2.9.2" externallink="https://github.com/MadPatrick/domoticz_toon">
       <description>
           <h2>Toon Rooted</h2>
-          <p><strong>Version:</strong> 2.9.1</p>
+          <p><strong>Version:</strong> 2.9.2</p>
           <p>Connects Domoticz to a rooted Toon thermostat through its local API.</p>
           <h3>Features</h3>
           <ul>
@@ -627,7 +627,7 @@ class BasePlugin:
             # oorspronkelijke logica): na een cooldown willen we niet dat een
             # optionele fout de verbindingsstatus beinvloedt of
             # expectedDowntimeLogged reset.
-            boiler_data = result.get("boiler")
+            boiler_data = self._mergeBoilerData(result.get("boiler"), test)
             if boiler_data:
                 self.updateBoilerDevices(boiler_data)
             if self.useZwave:
@@ -646,7 +646,7 @@ class BasePlugin:
         if thermostat_data:
             self.updateThermostatDevices(thermostat_data)
 
-        boiler_data = result.get("boiler")
+        boiler_data = self._mergeBoilerData(result.get("boiler"), thermostat_data)
         results.append(result.get("boiler_ok", False))
         if boiler_data:
             self.updateBoilerDevices(boiler_data)
@@ -824,6 +824,29 @@ class BasePlugin:
                 strInfo = f"Next program {strNextProgram} ({strNextSetpoint} C) at {strNextTime}"
             if programInfo in Devices and Devices[programInfo].sValue != strInfo:
                 UpdateDevice(Unit=programInfo, nValue=0, sValue=strInfo)
+
+    def _mergeBoilerData(self, boiler_data, thermostat_data):
+        """Boiler modulation and boiler setpoint are also reported by
+        getThermostatInfo (currentModulationLevel / currentInternalBoilerSetpoint).
+        Some Toons have no usable boilervalues.txt, so use the thermostat values
+        as a fallback; values from boilervalues.txt win when present."""
+        merged = {}
+        if thermostat_data:
+            modulation = thermostat_data.get('currentModulationLevel')
+            if modulation is not None:
+                try:
+                    merged['boilerModulationLevel'] = int(float(modulation))
+                except (TypeError, ValueError):
+                    pass
+            setpoint = thermostat_data.get('currentInternalBoilerSetpoint')
+            if setpoint is not None:
+                try:
+                    merged['boilerSetpoint'] = float(setpoint)
+                except (TypeError, ValueError):
+                    pass
+        if boiler_data:
+            merged.update({k: v for k, v in boiler_data.items() if v is not None})
+        return merged
 
     def updateBoilerDevices(self, data):
         try:
