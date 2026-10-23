@@ -1,8 +1,8 @@
 """
-<plugin key="RootedToonPlug" name="Toon Rooted" author="MadPatrick" version="2.9.3" externallink="https://github.com/MadPatrick/domoticz_toon">
+<plugin key="RootedToonPlug" name="Toon Rooted" author="MadPatrick" version="2.9.4" externallink="https://github.com/MadPatrick/domoticz_toon">
       <description>
           <h2>Toon Rooted</h2>
-          <p><strong>Version:</strong> 2.9.3</p>
+          <p><strong>Version:</strong> 2.9.4</p>
           <p>Connects Domoticz to a rooted Toon thermostat through its local API.</p>
           <h3>Features</h3>
           <ul>
@@ -88,6 +88,7 @@ programStates = ['10','20','30','40']  # index 3 = vacation mode = "Vakantie"
 burnerInfos = ['10','20','30']
 strPrograms = ['Weg', 'Slapen', 'Thuis', 'Comfort','Manual']
 OPTIONAL_ERROR_LOG_INTERVAL = 1800  # Log optional errors at most once every 30 minutes
+STALE_RESULT_GRACE = 5.0  # Seconds after a Domoticz command during which fetch results are not trusted
 MIN_SETPOINT = 5.0  # Sane lower bound (°C) for a manually entered thermostat setpoint
 MAX_SETPOINT = 30.0  # Sane upper bound (°C) for a manually entered thermostat setpoint
 
@@ -130,6 +131,12 @@ class BasePlugin:
         self.expectedDowntimeEnd   = "04:00"
         self.expectedDowntimeLogged = False
         self.useSummerMode = False
+        # config.txt UseBoilerValuesFile=no skips /boilerstatus/boilervalues.txt
+        # (not available on every Toon); modulation/setpoint then come from getThermostatInfo.
+        self.useBoilerValuesFile = True
+        # Time of the last command sent from Domoticz. Fetch results that were
+        # started before it (+ grace) may still carry the old state and are dropped.
+        self._lastCommandTime = 0.0
         self.session = requests.Session()
 
         # Heartbeat fetch cycles run on a background thread so a slow/unreachable
@@ -191,8 +198,12 @@ class BasePlugin:
                                 Domoticz.Log(f"Invalid format for DowntimeEnd: '{value}', default values used.")
                         elif key == "SummerMode":
                             self.useSummerMode = (value.lower() == "yes")
+                        elif key == "UseBoilerValuesFile":
+                            self.useBoilerValuesFile = (value.lower() != "no")
             Domoticz.Log(f"Expected downtime window: {self.expectedDowntimeStart} - {self.expectedDowntimeEnd}")
             Domoticz.Log(f"Summer mode: {'enabled' if self.useSummerMode else 'disabled'}")
+            if not self.useBoilerValuesFile:
+                Domoticz.Log("boilervalues.txt disabled in config.txt, boiler data taken from getThermostatInfo only.")
         except Exception as e:
             Domoticz.Log(f"Error reading config.txt: {e}")
 
@@ -410,6 +421,8 @@ class BasePlugin:
 
     def onCommand(self, Unit, Command, Level, Hue):
         Domoticz.Debug(f"onCommand Unit {Unit} Command {Command} Level {Level}")
+        if Unit in (setTemp, scene, autoProgram):
+            self._lastCommandTime = time()
         if Unit == setTemp:
             clampedLevel = min(max(Level, MIN_SETPOINT), MAX_SETPOINT)
             setpoint = int(round(clampedLevel * 100))
@@ -420,6 +433,11 @@ class BasePlugin:
                     self.updateSceneFromSetpoint(clampedLevel)
         elif Unit == scene:
             scene_level = int(Level)
+            if scene_level == 0:
+                # Level 0 is the hidden "Off" entry; it is not a Toon scene
+                # (e.g. a script switching by a level name Domoticz could not resolve).
+                Domoticz.Log("Ignoring scene command with level 0 (no valid scene selected).")
+                return
             temp = self.scene_map.get(str(scene_level), None)
             if temp is not None and not self.isSummerModeActive():
                 if self.fetchJson(f"/happ_thermstat?action=setSetpoint&Setpoint={int(temp*100)}") is not None:
@@ -558,7 +576,7 @@ class BasePlugin:
         results back through self._result_queue - it must never touch
         Devices[...] or call UpdateDevice(), that happens in
         _processFetchResult() on the main thread instead."""
-        result = {"mode": mode, "want_scenes": want_scenes}
+        result = {"mode": mode, "want_scenes": want_scenes, "started": time()}
         try:
             if pending_scheme_state is not None:
                 self.fetchJson(
@@ -570,7 +588,8 @@ class BasePlugin:
                 test = self.fetchJson("/happ_thermstat?action=getThermostatInfo")
                 result["thermostat"] = test
                 if test is not None:
-                    result["boiler"] = self.fetchJson("/boilerstatus/boilervalues.txt", critical=False)
+                    if self.useBoilerValuesFile:
+                        result["boiler"] = self.fetchJson("/boilerstatus/boilervalues.txt", critical=False)
                     if want_zwave:
                         result["zwave"] = self.fetchJson("/hdrv_zwave?action=getDevices.json", critical=False)
                     if want_summer:
@@ -586,9 +605,13 @@ class BasePlugin:
                 result["thermostat"] = thermostat_data
                 result["thermostat_ok"] = thermostat_data is not None
 
-                boiler_data = self.fetchJson("/boilerstatus/boilervalues.txt", critical=False)
-                result["boiler"] = boiler_data
-                result["boiler_ok"] = boiler_data is not None
+                if self.useBoilerValuesFile:
+                    boiler_data = self.fetchJson("/boilerstatus/boilervalues.txt", critical=False)
+                    result["boiler"] = boiler_data
+                    result["boiler_ok"] = boiler_data is not None
+                else:
+                    result["boiler"] = None
+                    result["boiler_ok"] = True
 
                 if want_zwave:
                     zw = self.fetchJson("/hdrv_zwave?action=getDevices.json", critical=False)
@@ -616,6 +639,15 @@ class BasePlugin:
         """Processes one completed fetch cycle's raw data: all Devices[...]
         reads/writes happen here, on the main thread. Mirrors the exact
         sequencing the old synchronous onHeartbeat used."""
+        if result.get("started", 0) < self._lastCommandTime + STALE_RESULT_GRACE:
+            # Fetched before (or right after) a command from Domoticz: it can
+            # still report the previous scene/setpoint and would briefly undo
+            # the user's choice. The next cycle picks up the new state.
+            Domoticz.Debug("Dropping fetch result that predates the last command.")
+            if result.get("want_scenes"):
+                self._scenes_refresh_pending = True
+            return
+
         if result["mode"] == "cooldown_test":
             test = result.get("thermostat")
             if test is None:
