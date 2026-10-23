@@ -1,8 +1,8 @@
 """
-<plugin key="RootedToonPlug" name="Toon Rooted" author="MadPatrick" version="2.9.2" externallink="https://github.com/MadPatrick/domoticz_toon">
+<plugin key="RootedToonPlug" name="Toon Rooted" author="MadPatrick" version="2.9.3" externallink="https://github.com/MadPatrick/domoticz_toon">
       <description>
           <h2>Toon Rooted</h2>
-          <p><strong>Version:</strong> 2.9.2</p>
+          <p><strong>Version:</strong> 2.9.3</p>
           <p>Connects Domoticz to a rooted Toon thermostat through its local API.</p>
           <h3>Features</h3>
           <ul>
