@@ -1,5 +1,5 @@
 """
-<plugin key="RootedToonPlug" name="Toon Rooted" author="MadPatrick" version="2.9.4" externallink="https://github.com/MadPatrick/domoticz_toon">
+<plugin key="RootedToonPlug" name="Toon Rooted" author="MadPatrick" version="2.9.5" externallink="https://github.com/MadPatrick/domoticz_toon">
       <description>
           <h2>Toon Rooted</h2>
           <p><strong>Version:</strong> 2.9.4</p>
@@ -91,6 +91,10 @@ OPTIONAL_ERROR_LOG_INTERVAL = 1800  # Log optional errors at most once every 30 
 STALE_RESULT_GRACE = 5.0  # Seconds after a Domoticz command during which fetch results are not trusted
 MIN_SETPOINT = 5.0  # Sane lower bound (°C) for a manually entered thermostat setpoint
 MAX_SETPOINT = 30.0  # Sane upper bound (°C) for a manually entered thermostat setpoint
+BOILER_VALUES_PATH = "/boilerstatus/boilervalues.txt"
+BOILER_VALUES_404_LIMIT = 3  # Consecutive 404s before boilervalues.txt is skipped
+BOILER_VALUES_RECHECK = 86400  # Seconds to skip boilervalues.txt after repeated 404s (re-checked once a day)
+NOT_FOUND = object()  # Returned by fetchJson(..., notFoundSentinel=True) on HTTP 404
 
 # Device unit numbers
 curTemp = 1
@@ -134,6 +138,11 @@ class BasePlugin:
         # config.txt UseBoilerValuesFile=no skips /boilerstatus/boilervalues.txt
         # (not available on every Toon); modulation/setpoint then come from getThermostatInfo.
         self.useBoilerValuesFile = True
+        # Auto-skip for a Toon that answers 404 on boilervalues.txt, so the log
+        # isn't filled with the same warning every 30 minutes.
+        self._boilerValues404Count = 0
+        self._boilerValuesSkipUntil = 0.0
+        self._boilerValuesMissingLogged = False
         # Time of the last command sent from Domoticz. Fetch results that were
         # started before it (+ grace) may still carry the old state and are dropped.
         self._lastCommandTime = 0.0
@@ -589,7 +598,7 @@ class BasePlugin:
                 result["thermostat"] = test
                 if test is not None:
                     if self.useBoilerValuesFile:
-                        result["boiler"] = self.fetchJson("/boilerstatus/boilervalues.txt", critical=False)
+                        result["boiler"], _ = self._fetchBoilerValues()
                     if want_zwave:
                         result["zwave"] = self.fetchJson("/hdrv_zwave?action=getDevices.json", critical=False)
                     if want_summer:
@@ -606,9 +615,9 @@ class BasePlugin:
                 result["thermostat_ok"] = thermostat_data is not None
 
                 if self.useBoilerValuesFile:
-                    boiler_data = self.fetchJson("/boilerstatus/boilervalues.txt", critical=False)
+                    boiler_data, boiler_ok = self._fetchBoilerValues()
                     result["boiler"] = boiler_data
-                    result["boiler_ok"] = boiler_data is not None
+                    result["boiler_ok"] = boiler_ok
                 else:
                     result["boiler"] = None
                     result["boiler_ok"] = True
@@ -712,11 +721,53 @@ class BasePlugin:
                     # deferred to the next heartbeat cycle instead of blocking.
                     self._scenes_refresh_pending = True
 
+    def _fetchBoilerValues(self):
+        """Fetch boilervalues.txt on the worker thread.
+
+        Returns (data, ok). A 404 means the Toon is reachable but has no such
+        file, so it counts as ok. After BOILER_VALUES_404_LIMIT consecutive 404s
+        the file is skipped for BOILER_VALUES_RECHECK seconds; that is logged
+        once and later re-checks stay at debug level."""
+        if time() < self._boilerValuesSkipUntil:
+            return None, True
+
+        data = self.fetchJson(BOILER_VALUES_PATH, critical=False, notFoundSentinel=True)
+        if data is NOT_FOUND:
+            self._boilerValues404Count += 1
+            if self._boilerValues404Count >= BOILER_VALUES_404_LIMIT:
+                self._boilerValuesSkipUntil = time() + BOILER_VALUES_RECHECK
+                if not self._boilerValuesMissingLogged:
+                    Domoticz.Log(
+                        f"{BOILER_VALUES_PATH} not found on this Toon. Skipping it and using "
+                        "getThermostatInfo for boiler data (checked again once a day). "
+                        "Set UseBoilerValuesFile=no in config.txt to skip it from startup."
+                    )
+                    self._boilerValuesMissingLogged = True
+                else:
+                    Domoticz.Debug(f"{BOILER_VALUES_PATH} still not found, skipping for another day.")
+            else:
+                Domoticz.Debug(
+                    f"{BOILER_VALUES_PATH} not found "
+                    f"({self._boilerValues404Count}/{BOILER_VALUES_404_LIMIT})."
+                )
+            return None, True
+
+        if data is not None:
+            if self._boilerValuesMissingLogged:
+                Domoticz.Log(f"{BOILER_VALUES_PATH} is available again.")
+            self._boilerValues404Count = 0
+            self._boilerValuesMissingLogged = False
+            return data, True
+
+        return None, False
+
     # --- Fetch functies ---
-    def fetchJson(self, path, critical=True):
+    def fetchJson(self, path, critical=True, notFoundSentinel=False):
         try:
             url = f"http://{Parameters['Address']}:{Parameters['Port']}{path}"
             r = self.session.get(url, timeout=10)
+            if notFoundSentinel and r.status_code == 404:
+                return NOT_FOUND
             r.raise_for_status()
             return r.json()
         except Exception as e:
