@@ -95,6 +95,14 @@ BOILER_VALUES_PATH = "/boilerstatus/boilervalues.txt"
 BOILER_VALUES_404_LIMIT = 3  # Consecutive 404s before boilervalues.txt is skipped
 BOILER_VALUES_RECHECK = 86400  # Seconds to skip boilervalues.txt after repeated 404s (re-checked once a day)
 NOT_FOUND = object()  # Returned by fetchJson(..., notFoundSentinel=True) on HTTP 404
+# hcb_rrd loggers read as a source for boiler data (key in boiler data -> logger name).
+# thermstat_boilerTemp/-RetTemp only exist on a Toon with the happ_thermstat logger patch.
+RRD_BOILER_LOGGERS = {
+    'boilerPressure': 'thermstat_boilerChPressure',
+    'boilerFlowTemp': 'thermstat_boilerTemp',
+    'boilerReturnTemp': 'thermstat_boilerRetTemp',
+}
+RRD_WINDOW = 900  # Seconds of hcb_rrd history requested per fetch (small response, latest value used)
 
 # Device unit numbers
 curTemp = 1
@@ -111,6 +119,8 @@ boilerState = 11
 boilerModulation = 12
 boilerSetPoint = 13
 summerMode = 14
+boilerFlowTemp = 15    # Created on the first value from hcb_rrd thermstat_boilerTemp
+boilerReturnTemp = 16  # Created on the first value from hcb_rrd thermstat_boilerRetTemp
 
 # --- BasePlugin class ---
 class BasePlugin:
@@ -597,6 +607,7 @@ class BasePlugin:
                 test = self.fetchJson("/happ_thermstat?action=getThermostatInfo")
                 result["thermostat"] = test
                 if test is not None:
+                    result["rrd"] = self._fetchRrdBoilerValues()
                     if self.useBoilerValuesFile:
                         result["boiler"], _ = self._fetchBoilerValues()
                     if want_zwave:
@@ -613,6 +624,8 @@ class BasePlugin:
                 thermostat_data = self.fetchJson("/happ_thermstat?action=getThermostatInfo")
                 result["thermostat"] = thermostat_data
                 result["thermostat_ok"] = thermostat_data is not None
+
+                result["rrd"] = self._fetchRrdBoilerValues()
 
                 if self.useBoilerValuesFile:
                     boiler_data, boiler_ok = self._fetchBoilerValues()
@@ -668,7 +681,7 @@ class BasePlugin:
             # oorspronkelijke logica): na een cooldown willen we niet dat een
             # optionele fout de verbindingsstatus beinvloedt of
             # expectedDowntimeLogged reset.
-            boiler_data = self._mergeBoilerData(result.get("boiler"), test)
+            boiler_data = self._mergeBoilerData(result.get("boiler"), test, result.get("rrd"))
             if boiler_data:
                 self.updateBoilerDevices(boiler_data)
             if self.useZwave:
@@ -687,7 +700,7 @@ class BasePlugin:
         if thermostat_data:
             self.updateThermostatDevices(thermostat_data)
 
-        boiler_data = self._mergeBoilerData(result.get("boiler"), thermostat_data)
+        boiler_data = self._mergeBoilerData(result.get("boiler"), thermostat_data, result.get("rrd"))
         results.append(result.get("boiler_ok", False))
         if boiler_data:
             self.updateBoilerDevices(boiler_data)
@@ -720,6 +733,23 @@ class BasePlugin:
                     # Originally triggered an immediate fetchScenes() call here;
                     # deferred to the next heartbeat cycle instead of blocking.
                     self._scenes_refresh_pending = True
+
+    def _fetchRrdBoilerValues(self):
+        """Fetch the latest boiler readings from the Toon's hcb_rrd loggers
+        (worker thread). Only the last RRD_WINDOW seconds are requested, which
+        keeps each response at a few hundred bytes. Loggers a Toon doesn't have
+        just yield no value; failures are logged at debug level only."""
+        values = {}
+        since = int(time()) - RRD_WINDOW
+        for key, logger in RRD_BOILER_LOGGERS.items():
+            data = self.fetchJson(
+                f"/hcb_rrd?action=getRrdData&loggerName={logger}&rra=30days&from={since}",
+                critical=False, quiet=True
+            )
+            value = latestRrdValue(data)
+            if value is not None:
+                values[key] = value
+        return values
 
     def _fetchBoilerValues(self):
         """Fetch boilervalues.txt on the worker thread.
@@ -762,7 +792,7 @@ class BasePlugin:
         return None, False
 
     # --- Fetch functies ---
-    def fetchJson(self, path, critical=True, notFoundSentinel=False):
+    def fetchJson(self, path, critical=True, notFoundSentinel=False, quiet=False):
         try:
             url = f"http://{Parameters['Address']}:{Parameters['Port']}{path}"
             r = self.session.get(url, timeout=10)
@@ -782,6 +812,8 @@ class BasePlugin:
                     if self.errorCooldown == 0:
                         Domoticz.Error(f"Fetch failed ({path}): {errorText}")
                         self.startCooldown()
+                elif quiet:
+                    Domoticz.Debug(f"Optional fetch failed ({path}): {errorText}")
                 else:
                     key = path
                     now = time()
@@ -908,11 +940,12 @@ class BasePlugin:
             if programInfo in Devices and Devices[programInfo].sValue != strInfo:
                 UpdateDevice(Unit=programInfo, nValue=0, sValue=strInfo)
 
-    def _mergeBoilerData(self, boiler_data, thermostat_data):
+    def _mergeBoilerData(self, boiler_data, thermostat_data, rrd_data=None):
         """Boiler modulation and boiler setpoint are also reported by
-        getThermostatInfo (currentModulationLevel / currentInternalBoilerSetpoint).
-        Some Toons have no usable boilervalues.txt, so use the thermostat values
-        as a fallback; values from boilervalues.txt win when present."""
+        getThermostatInfo (currentModulationLevel / currentInternalBoilerSetpoint),
+        and boiler pressure (plus flow/return temperature on a patched Toon) by
+        the hcb_rrd loggers. Some Toons have no usable boilervalues.txt, so use
+        those as a fallback; values from boilervalues.txt win when present."""
         merged = {}
         if thermostat_data:
             modulation = thermostat_data.get('currentModulationLevel')
@@ -927,6 +960,8 @@ class BasePlugin:
                     merged['boilerSetpoint'] = float(setpoint)
                 except (TypeError, ValueError):
                     pass
+        if rrd_data:
+            merged.update(rrd_data)
         if boiler_data:
             merged.update({k: v for k, v in boiler_data.items() if v is not None})
         return merged
@@ -947,6 +982,18 @@ class BasePlugin:
 
             if 'boilerModulationLevel' in data and data['boilerModulationLevel'] is not None:
                 safe_update(boilerModulation, int(data['boilerModulationLevel']), always=True)
+
+            # Only Toons with the happ_thermstat logger patch report these, so
+            # the devices are created on the first value instead of in onStart.
+            for unit, key, name in ((boilerFlowTemp, 'boilerFlowTemp', "Ketel aanvoer"),
+                                    (boilerReturnTemp, 'boilerReturnTemp', "Ketel retour")):
+                if data.get(key) is None:
+                    continue
+                if unit not in Devices:
+                    self.createDeviceIfNotExists(unit=unit, name=name, typeName="Temperature",
+                                                 image=self.imageID)
+                    self._apply_device_icon(unit, self.imageID)
+                safe_update(unit, round(float(data[key]), 1), always=True)
 
         except Exception as e:
             Domoticz.Error(f"Error processing boiler data: {e}")
@@ -1027,6 +1074,20 @@ def cleanError(e):
     if "not found" in msg: return "Not found"
     return msg.split('(')[0].strip()
 
+def latestRrdValue(data):
+    """Return the newest numeric value from a getRrdData response
+    ({"<epoch>": value, ...}), or None when there is none."""
+    if not isinstance(data, dict):
+        return None
+    for ts in sorted(data, key=lambda k: SafeInt(k) or 0, reverse=True):
+        try:
+            value = float(data[ts])
+        except (TypeError, ValueError):
+            continue
+        if not math.isnan(value):
+            return value
+    return None
+
 def SafeInt(value):
     try:
         return int(value)
@@ -1062,7 +1123,8 @@ def UpdateDevice(Unit, nValue, sValue, TimedOut=0, always=False):
 
                 silent_units = [
                     gas, electricity, genElectricity, p1electricity,
-                    boilerSetPoint, curTemp, boilerModulation, boilerPressure
+                    boilerSetPoint, curTemp, boilerModulation, boilerPressure,
+                    boilerFlowTemp, boilerReturnTemp
                 ]
 
                 if Unit not in silent_units:

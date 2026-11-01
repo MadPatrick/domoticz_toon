@@ -163,3 +163,5 @@ A list of the devices created by the plugin in your Domoticz Devices tab.
 <img width="922" height="404" alt="image" src="https://github.com/user-attachments/assets/3bdb38ff-4f2e-4a1a-b2db-9d9cf0bdc621" />
 
 
+
+**Boiler flow/return temperature:** on a Toon with the `happ_thermstat` logger patch (which restores the `thermstat_boilerTemp` and `thermstat_boilerRetTemp` loggers), the plugin also creates **Ketel aanvoer** and **Ketel retour** temperature devices as soon as the first reading comes in. Boiler pressure is read from the `thermstat_boilerChPressure` logger as well, so it keeps working on Toons without `/boilerstatus/boilervalues.txt`.
