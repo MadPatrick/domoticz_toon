@@ -1,8 +1,8 @@
 """
-<plugin key="RootedToonPlug" name="Toon Rooted" author="MadPatrick" version="2.10.0" externallink="https://github.com/MadPatrick/domoticz_toon">
+<plugin key="RootedToonPlug" name="Toon Rooted" author="MadPatrick" version="2.10.1" externallink="https://github.com/MadPatrick/domoticz_toon">
       <description>
           <h2>Toon Rooted</h2>
-          <p><strong>Version:</strong> 2.10.0</p>
+          <p><strong>Version:</strong> 2.10.1</p>
           <p>Connects Domoticz to a rooted Toon thermostat through its local API.</p>
           <h3>Features</h3>
           <ul>
@@ -157,6 +157,11 @@ class BasePlugin:
         # started before it (+ grace) may still carry the old state and are dropped.
         self._lastCommandTime = 0.0
         self.session = requests.Session()
+        # requests.Session is not thread-safe. The heartbeat worker thread uses
+        # its own session (only one worker runs at a time, see _fetch_in_progress),
+        # so an onCommand() on the main thread never shares a session with it.
+        self.worker_session = requests.Session()
+        self._thread_local = threading.local()
 
         # Heartbeat fetch cycles run on a background thread so a slow/unreachable
         # Toon never blocks Domoticz's single callback thread. The worker thread
@@ -436,6 +441,10 @@ class BasePlugin:
             self.session.close()
         except Exception:
             pass
+        try:
+            self.worker_session.close()
+        except Exception:
+            pass
         Domoticz.Log("Plugin stopped")
 
     def onCommand(self, Unit, Command, Level, Hue):
@@ -446,7 +455,7 @@ class BasePlugin:
             clampedLevel = min(max(Level, MIN_SETPOINT), MAX_SETPOINT)
             setpoint = int(round(clampedLevel * 100))
             # Alleen updaten in Domoticz als de Toon API akkoord geeft
-            if self.fetchJson(f"/happ_thermstat?action=setSetpoint&Setpoint={setpoint}") is not None:
+            if self.commandFetchJson(f"/happ_thermstat?action=setSetpoint&Setpoint={setpoint}", f"setpoint {clampedLevel:.1f}") is not None:
                 UpdateDevice(setTemp, 0, str(clampedLevel))
                 if not self.isSummerModeActive():
                     self.updateSceneFromSetpoint(clampedLevel)
@@ -459,12 +468,12 @@ class BasePlugin:
                 return
             temp = self.scene_map.get(str(scene_level), None)
             if temp is not None and not self.isSummerModeActive():
-                if self.fetchJson(f"/happ_thermstat?action=setSetpoint&Setpoint={int(temp*100)}") is not None:
+                if self.commandFetchJson(f"/happ_thermstat?action=setSetpoint&Setpoint={int(temp*100)}", f"scene setpoint {temp:.1f}") is not None:
                     UpdateDevice(setTemp, 0, str(temp))
             state_map = {10: 3, 20: 2, 30: 1, 40: 0}
             newState = state_map.get(scene_level, None)
             if newState is not None:
-                if self.fetchJson(f"/happ_thermstat?action=changeSchemeState&state=2&temperatureState={newState}") is not None:
+                if self.commandFetchJson(f"/happ_thermstat?action=changeSchemeState&state=2&temperatureState={newState}", "scene change") is not None:
                     UpdateDevice(scene, 0, str(scene_level))
             else:
                 # "Manual" (or any scene without a mapped Toon state) doesn't call the Toon
@@ -476,7 +485,7 @@ class BasePlugin:
             prog_state_map = {10: 0, 20: 1, 30: 2, 40: 3}
             prog_state = prog_state_map.get(prog_level, None)
             if prog_state is not None:
-                if self.fetchJson(f"/happ_thermstat?action=changeSchemeState&state={prog_state}") is not None:
+                if self.commandFetchJson(f"/happ_thermstat?action=changeSchemeState&state={prog_state}", "program state change") is not None:
                     UpdateDevice(autoProgram, 0, str(prog_level))
         elif Unit == summerMode:
             enabled = (Command == "On")
@@ -596,6 +605,8 @@ class BasePlugin:
         Devices[...] or call UpdateDevice(), that happens in
         _processFetchResult() on the main thread instead."""
         result = {"mode": mode, "want_scenes": want_scenes, "started": time()}
+        # Route every fetchJson() on this thread through the worker session.
+        self._thread_local.session = self.worker_session
         try:
             if pending_scheme_state is not None:
                 self.fetchJson(
@@ -791,11 +802,21 @@ class BasePlugin:
 
         return None, False
 
+    def commandFetchJson(self, path, description):
+        """fetchJson() for commands from Domoticz. A failed command is always
+        reported once (also during the expected downtime window) and does not
+        start the heartbeat error cooldown."""
+        result = self.fetchJson(path, critical=False, quiet=True)
+        if result is None:
+            Domoticz.Error(f"Toon command failed ({description}): no response from Toon.")
+        return result
+
     # --- Fetch functies ---
     def fetchJson(self, path, critical=True, notFoundSentinel=False, quiet=False):
         try:
             url = f"http://{Parameters['Address']}:{Parameters['Port']}{path}"
-            r = self.session.get(url, timeout=10)
+            session = getattr(self._thread_local, "session", self.session)
+            r = session.get(url, timeout=10)
             if notFoundSentinel and r.status_code == 404:
                 return NOT_FOUND
             r.raise_for_status()
