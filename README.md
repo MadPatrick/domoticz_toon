@@ -85,6 +85,21 @@ The plugin provides **bidirectional synchronization** and comprehensive monitori
 
 ---
 
+## 📝 `config.txt`
+
+The plugin's settings file is `config.txt` in the plugin directory. It is **not** part of the repository, so `git pull` never overwrites your settings. On the first start the plugin creates it from `config.example.txt`; you can also copy it yourself:
+
+```bash
+cp config.example.txt config.txt
+```
+
+> ℹ️ **Updating from a version before this change:** `config.txt` used to be in the repository. If you changed it (or toggled the Summer Mode switch), `git pull` stops with *"local changes would be overwritten"*. Keep your settings like this:
+> ```bash
+> cp config.txt config.txt.bak && git checkout config.txt && git pull && mv config.txt.bak config.txt
+> ```
+
+---
+
 ## 🕒 Configurable Downtime Window (`config.txt`)
 
 The Toon performs a daily reboot, typically between **03:00 and 04:00**. During this window the plugin suppresses error logging. You can customize this window by editing the `config.txt` file in the plugin directory:

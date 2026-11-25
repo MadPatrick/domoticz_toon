@@ -78,6 +78,7 @@ import Domoticz
 import requests
 import math
 import os
+import shutil
 import threading
 import queue
 from datetime import datetime
@@ -132,6 +133,8 @@ class BasePlugin:
         self.ia_edlt = ''
         self.ia_ernt = ''
         self.ia_erlt = ''
+        self._p1DetectFailedLogged = False
+        self._zwaveIncompleteLogged = False
         self.sceneCounter = 0
         self.errorCooldown = 0
         self.lastErrorTime = None
@@ -194,11 +197,29 @@ class BasePlugin:
         truthy = {"true", "1", "yes", "on"} | {v.lower() for v in extra_truthy}
         return str(raw).strip().lower() in truthy
 
+    def _ensureConfigFile(self):
+        """config.txt is the user's own file and not part of the repository,
+        so 'git pull' never touches it. Create it from config.example.txt
+        when it doesn't exist yet. Returns its path, or None."""
+        config_path = os.path.join(Parameters["HomeFolder"], "config.txt")
+        if os.path.isfile(config_path):
+            return config_path
+        example_path = os.path.join(Parameters["HomeFolder"], "config.example.txt")
+        if not os.path.isfile(example_path):
+            return None
+        try:
+            shutil.copyfile(example_path, config_path)
+            Domoticz.Log(f"config.txt created from config.example.txt ({config_path}).")
+            return config_path
+        except Exception as e:
+            Domoticz.Log(f"Could not create config.txt from config.example.txt: {e}")
+            return None
+
     # --- Config laden ---
     def loadConfig(self):
-        config_path = os.path.join(Parameters["HomeFolder"], "config.txt")
-        if not os.path.isfile(config_path):
-            Domoticz.Log(f"config.txt not found ({config_path}), default values used.")
+        config_path = self._ensureConfigFile()
+        if config_path is None:
+            Domoticz.Log("config.txt not found, default values used.")
             return
         try:
             with open(config_path, "r", encoding="utf-8") as f:
@@ -262,56 +283,21 @@ class BasePlugin:
 
     # --- P1 / Zwave helper ---
     def setupP1Devices(self):
-        paramList = []
-        detected_version = None
-
         p1_addresses = str(self._read_migrated_parameter("P1Addresses", "Mode5", ""))
         if p1_addresses:
             paramList = p1_addresses.split(";")
             if len(paramList) == 5:
                 self.ia_gas, self.ia_ednt, self.ia_edlt, self.ia_ernt, self.ia_erlt = paramList
-                detected_version = "Usermode"
                 Domoticz.Log(f"Manual P1-addresses used: {paramList}")
+                self._logP1Addresses("Usermode")
             else:
                 Domoticz.Log("P1Addresses set, but wrong number of addresses (5 expected)")
-                paramList = []
 
-        if not paramList:
-            detected_version = "niet gedetecteerd"
-            try:
-                zwave_json = self.fetchJson("/hdrv_zwave?action=getDevices.json", critical=False)
-                if zwave_json:
-                    internal_addresses = [
-                        dev["internalAddress"] for dev in zwave_json.values()
-                        if "internalAddress" in dev
-                    ]
-
-                    valid_addresses = [
-                        addr for addr in internal_addresses
-                        if addr.replace(".", "").isdigit()
-                    ]
-
-                    if valid_addresses:
-                        prefixes = set(addr.split(".")[0] if "." in addr else addr for addr in valid_addresses)
-                        detected_prefix = max(prefixes, key=lambda p: sum(1 for a in valid_addresses if a.startswith(p + ".")))
-                        toon_version = str(self._read_migrated_parameter("ToonVersion", "Mode4", "v2"))
-                        suffixes = ["1","3","5","4","6"] if toon_version == "v1" else ["1","4","6","5","7"]
-                        paramList = [f"{detected_prefix}.{s}" for s in suffixes]
-
-                        if len(paramList) == 5:
-                            self.ia_gas, self.ia_ednt, self.ia_edlt, self.ia_ernt, self.ia_erlt = paramList
-                            detected_version = f"{toon_version} ({detected_prefix}.x)"
-                    else:
-                        Domoticz.Log("WARNING: No valid meter addresses detected in Z-Wave response.")
-            except Exception as e:
-                detected_version = "error"
-                Domoticz.Log(f"Error with automatic detection of Z-Wave version: {e}")
-
-        Domoticz.Log(
-            f"P1-devices {detected_version} : Gas={self.ia_gas}, DeliveredNT={self.ia_ednt}, "
-            f"DeliveredLT={self.ia_edlt}, ReceivedNT={self.ia_ernt}, "
-            f"ReceivedLT={self.ia_erlt}"
-        )
+        if not self.hasP1Addresses():
+            # Automatic detection runs on the first Z-Wave answer the heartbeat
+            # worker fetches (see detectP1Addresses), so it is retried until it
+            # succeeds - also when the Toon is offline while Domoticz starts.
+            Domoticz.Log("P1-addresses will be detected automatically from the Toon's Z-Wave data.")
 
         p1_devices = [
             {"unit": gas, "name": "Gas", "typeName": "Gas"},
@@ -328,6 +314,50 @@ class BasePlugin:
                 subtype=dev.get("subtype"),
                 used=dev.get("used", 1)
             )
+
+    def hasP1Addresses(self):
+        return all((self.ia_gas, self.ia_ednt, self.ia_edlt, self.ia_ernt, self.ia_erlt))
+
+    def _logP1Addresses(self, detected_version):
+        Domoticz.Log(
+            f"P1-devices {detected_version} : Gas={self.ia_gas}, DeliveredNT={self.ia_ednt}, "
+            f"DeliveredLT={self.ia_edlt}, ReceivedNT={self.ia_ernt}, "
+            f"ReceivedLT={self.ia_erlt}"
+        )
+
+    def detectP1Addresses(self, zwave_json):
+        """Derive the five P1 addresses from a getDevices.json answer.
+        Main thread only. Returns True when the addresses are set."""
+        try:
+            internal_addresses = [
+                str(dev["internalAddress"]) for dev in zwave_json.values()
+                if isinstance(dev, dict) and "internalAddress" in dev
+            ]
+            valid_addresses = [
+                addr for addr in internal_addresses
+                if addr.replace(".", "").isdigit()
+            ]
+            if not valid_addresses:
+                if not self._p1DetectFailedLogged:
+                    Domoticz.Log("WARNING: No valid meter addresses detected in Z-Wave response, retrying on the next update.")
+                    self._p1DetectFailedLogged = True
+                return False
+
+            prefixes = set(addr.split(".")[0] for addr in valid_addresses)
+            detected_prefix = max(prefixes, key=lambda p: sum(1 for a in valid_addresses if a.startswith(p + ".")))
+            toon_version = str(self._read_migrated_parameter("ToonVersion", "Mode4", "v2"))
+            suffixes = ["1","3","5","4","6"] if toon_version == "v1" else ["1","4","6","5","7"]
+            self.ia_gas, self.ia_ednt, self.ia_edlt, self.ia_ernt, self.ia_erlt = [
+                f"{detected_prefix}.{s}" for s in suffixes
+            ]
+            self._p1DetectFailedLogged = False
+            self._logP1Addresses(f"{toon_version} ({detected_prefix}.x)")
+            return True
+        except Exception as e:
+            if not self._p1DetectFailedLogged:
+                Domoticz.Log(f"Error with automatic detection of Z-Wave version: {e}")
+                self._p1DetectFailedLogged = True
+            return False
 
     # --- onStart ---
     def onStart(self):
@@ -424,8 +454,10 @@ class BasePlugin:
             nv = 1 if self.useSummerMode else 0
             Devices[summerMode].Update(nValue=nv, sValue="On" if self.useSummerMode else "Off")
 
-        self.fetchScenes()
+        # Set the heartbeat before the first fetch, so an error in the initial
+        # scene sync can't leave the plugin on the default heartbeat.
         Domoticz.Heartbeat(self.heartbeat_interval)
+        self.fetchScenes()
 
         Domoticz.Log(f"Heartbeat interval: {self.heartbeat_interval} sec")
         si = self.scene_interval
@@ -499,9 +531,9 @@ class BasePlugin:
         return self.useSummerMode and summerMode in Devices and Devices[summerMode].nValue == 1
 
     def updateConfigValue(self, key, value):
-        config_path = os.path.join(Parameters["HomeFolder"], "config.txt")
+        config_path = self._ensureConfigFile()
         try:
-            if os.path.isfile(config_path):
+            if config_path is not None:
                 with open(config_path, "r", encoding="utf-8") as f:
                     lines = f.readlines()
                 updated = False
@@ -552,7 +584,10 @@ class BasePlugin:
                 result = self._result_queue.get_nowait()
             except queue.Empty:
                 break
-            self._processFetchResult(result)
+            try:
+                self._processFetchResult(result)
+            except Exception as e:
+                Domoticz.Error(f"Error processing Toon data: {e}")
 
         # --- Cooldown check ---
         if self.lastErrorTime and self.errorCooldown > 0:
@@ -567,6 +602,19 @@ class BasePlugin:
         else:
             mode = "normal"
 
+        self.sceneCounter += self.heartbeat_interval
+
+        # A worker that is still running keeps its slot. Return before taking
+        # the pending scheme state / scene refresh, so they are sent by the
+        # next cycle that actually starts instead of being dropped.
+        # (_fetch_in_progress only goes True -> False outside this thread, so
+        # the check stays valid until _triggerFetchCycle below.)
+        with self._fetch_lock:
+            busy = self._fetch_in_progress
+        if busy:
+            Domoticz.Debug("Fetch cycle still in progress, retrying next heartbeat.")
+            return
+
         # Anything deferred by updateSceneFromSetpoint()/summer-mode-off since
         # the previous cycle is picked up by this one instead of blocking here.
         pending_scheme_state = self._pending_scheme_state
@@ -574,7 +622,6 @@ class BasePlugin:
         scenes_refresh_needed = self._scenes_refresh_pending
         self._scenes_refresh_pending = False
 
-        self.sceneCounter += self.heartbeat_interval
         want_scenes = (not self.isSummerModeActive()) and (
             scenes_refresh_needed or self.sceneCounter >= self.scene_interval
         )
@@ -697,7 +744,7 @@ class BasePlugin:
                 self.updateBoilerDevices(boiler_data)
             if self.useZwave:
                 zw = result.get("zwave")
-                if zw:
+                if zw and (self.hasP1Addresses() or self.detectP1Addresses(zw)):
                     self.updateZwaveDevices(zw)
             if self.useSummerMode:
                 self._processSummerModeResult(result.get("summer"))
@@ -719,7 +766,7 @@ class BasePlugin:
         if self.useZwave:
             zw = result.get("zwave")
             results.append(result.get("zwave_ok", False))
-            if zw:
+            if zw and (self.hasP1Addresses() or self.detectP1Addresses(zw)):
                 self.updateZwaveDevices(zw)
 
         if self.useSummerMode:
@@ -867,13 +914,19 @@ class BasePlugin:
         old_scene_map = self.scene_map.copy()
 
         if data and 'states' in data and len(data['states']) > 0:
-            state_list = data['states'][0]['state']
-            self.scene_map = {}
-            for s in state_list:
-                id_ = int(s['id'][0])
-                temp = float(s['tempValue'][0]) / 100
-                if id_ <= 3:
-                    self.scene_map[str(self.idToScene(id_))] = temp
+            new_scene_map = {}
+            try:
+                for s in data['states'][0]['state']:
+                    id_ = int(s['id'][0])
+                    temp = float(s['tempValue'][0]) / 100
+                    if id_ <= 3:
+                        new_scene_map[str(self.idToScene(id_))] = temp
+            except (KeyError, IndexError, TypeError, ValueError) as e:
+                # Keep the previous scene temperatures on an unexpected answer.
+                Domoticz.Error(f"Unexpected scene configuration from Toon, keeping previous scenes: {cleanError(e)}")
+                new_scene_map = None
+            if new_scene_map is not None:
+                self.scene_map = new_scene_map
 
             if self.scene_map != old_scene_map:
                 Domoticz.Log("Toon Scene settings updated.")
@@ -882,7 +935,11 @@ class BasePlugin:
                     Domoticz.Log(f"  {scene_name}: {temp:.1f}\u00B0C")
 
         if thermostat_data and 'activeState' in thermostat_data:
-            toon_scene = self.idToScene(int(thermostat_data['activeState']))
+            active_state = SafeInt(thermostat_data['activeState'])
+            if active_state is None:
+                Domoticz.Debug(f"Unexpected activeState from Toon: {thermostat_data['activeState']!r}")
+                return
+            toon_scene = self.idToScene(active_state)
             current_scene_val = SafeInt(Devices[scene].sValue) if scene in Devices else None
             if current_scene_val != toon_scene:
                 UpdateDevice(scene, 0, str(toon_scene))
@@ -1020,42 +1077,70 @@ class BasePlugin:
             Domoticz.Error(f"Error processing boiler data: {e}")
 
     def updateZwaveDevices(self, Response):
+        """Update gas and electricity from a getDevices.json answer.
+
+        Meter readings are cumulative counters. A missing or invalid reading
+        must never be written as 0: Domoticz would see the counter drop and
+        record a huge usage spike when the real value returns. So a device is
+        only updated when all readings it needs are valid."""
         try:
-            def safe_float(value, fallback=0.0):
+            def safe_float(value):
                 try:
                     result = float(value)
-                    return fallback if math.isnan(result) else result
                 except (ValueError, TypeError):
-                    return fallback
+                    return None
+                return None if math.isnan(result) or math.isinf(result) else result
 
-            zwaveDeliveredNtFlow = 0.0
-            zwaveDeliveredLtFlow = 0.0
-            zwaveDeliveredNtQ = 0.0
-            zwaveDeliveredLtQ = 0.0
-            zwaveReceivedNtFlow = 0.0
-            zwaveReceivedLtFlow = 0.0
-            zwaveReceivedNtQ = 0.0
-            zwaveReceivedLtQ = 0.0
-
+            meters = {}
             for info in Response.values():
-                if 'internalAddress' not in info:
-                    continue
-                ia = info['internalAddress']
-                if ia == self.ia_gas:
-                    gas_val = safe_float(info.get('CurrentGasQuantity', 0))
-                    UpdateDevice(Unit=gas, nValue=0, sValue=str(int(gas_val)))
-                elif ia == self.ia_ednt:
-                    zwaveDeliveredNtFlow = safe_float(info.get('CurrentElectricityFlow', 0))
-                    zwaveDeliveredNtQ    = safe_float(info.get('CurrentElectricityQuantity', 0))
-                elif ia == self.ia_edlt:
-                    zwaveDeliveredLtFlow = safe_float(info.get('CurrentElectricityFlow', 0))
-                    zwaveDeliveredLtQ    = safe_float(info.get('CurrentElectricityQuantity', 0))
-                elif ia == self.ia_ernt:
-                    zwaveReceivedNtFlow = safe_float(info.get('CurrentElectricityFlow', 0))
-                    zwaveReceivedNtQ    = safe_float(info.get('CurrentElectricityQuantity', 0))
-                elif ia == self.ia_erlt:
-                    zwaveReceivedLtFlow = safe_float(info.get('CurrentElectricityFlow', 0))
-                    zwaveReceivedLtQ    = safe_float(info.get('CurrentElectricityQuantity', 0))
+                if isinstance(info, dict) and 'internalAddress' in info:
+                    meters[str(info['internalAddress'])] = info
+
+            # --- Gas ---
+            gas_info = meters.get(self.ia_gas)
+            gas_val = safe_float(gas_info.get('CurrentGasQuantity')) if gas_info else None
+            if gas_val is not None and gas_val > 0:
+                UpdateDevice(Unit=gas, nValue=0, sValue=str(int(gas_val)))
+            else:
+                Domoticz.Debug(f"No valid gas reading for {self.ia_gas}, gas not updated.")
+
+            # --- Electricity ---
+            def read_meter(address, required):
+                """(flow, quantity) for one meter, or None when unusable.
+                Return meters (required=False) that the Toon doesn't list at
+                all count as 0, e.g. a home without solar panels."""
+                info = meters.get(address)
+                if info is None:
+                    return None if required else (0.0, 0.0)
+                quantity = safe_float(info.get('CurrentElectricityQuantity'))
+                if quantity is None:
+                    return None
+                flow = safe_float(info.get('CurrentElectricityFlow'))
+                return (flow if flow is not None else 0.0, quantity)
+
+            readings = {
+                "DeliveredNT": read_meter(self.ia_ednt, True),
+                "DeliveredLT": read_meter(self.ia_edlt, True),
+                "ReceivedNT": read_meter(self.ia_ernt, False),
+                "ReceivedLT": read_meter(self.ia_erlt, False),
+            }
+            missing = [name for name, value in readings.items() if value is None]
+            if missing or readings["DeliveredNT"][1] + readings["DeliveredLT"][1] <= 0:
+                if not self._zwaveIncompleteLogged:
+                    Domoticz.Log(
+                        f"Incomplete electricity data from Toon (missing/invalid: {', '.join(missing) or 'delivered total is 0'}), "
+                        "electricity not updated until the data is complete."
+                    )
+                    self._zwaveIncompleteLogged = True
+                return
+            if self._zwaveIncompleteLogged:
+                Domoticz.Log("Electricity data from Toon complete again.")
+                self._zwaveIncompleteLogged = False
+
+            zwaveDeliveredNtFlow, zwaveDeliveredNtQ = readings["DeliveredNT"]
+            zwaveDeliveredLtFlow, zwaveDeliveredLtQ = readings["DeliveredLT"]
+            zwaveReceivedNtFlow, zwaveReceivedNtQ = readings["ReceivedNT"]
+            zwaveReceivedLtFlow, zwaveReceivedLtQ = readings["ReceivedLT"]
 
             zwaveDeliveredFlow = int(zwaveDeliveredNtFlow + zwaveDeliveredLtFlow)
             zwaveDeliveredQ    = int(zwaveDeliveredNtQ + zwaveDeliveredLtQ)
